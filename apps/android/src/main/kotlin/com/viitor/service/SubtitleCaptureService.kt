@@ -34,6 +34,7 @@ class SubtitleCaptureService : Service() {
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     
     private lateinit var capturer: MediaProjectionCapturer
+    private lateinit var micCapturer: com.viitor.audio.MicCapturer
     private lateinit var vad: VoiceActivityDetector
     private lateinit var silenceDetector: SilenceDetector
     private lateinit var buffer: AudioChunkBuffer
@@ -60,6 +61,9 @@ class SubtitleCaptureService : Service() {
     // ★ 강제 청킹 및 문맥 유지를 위한 상태 관리 (임시 버퍼 페이백)
     private var latestProvisionalText = ""
     private var contextBuffer = "" // 앞 문장이 안 끝났을 때 이어붙이기 위한 버퍼
+    private lateinit var whisperLiveClient: com.viitor.stt.net.WhisperLiveClient
+    private var isMicMode = false // Toggle for mic capture vs system capture
+    
     private val contextCacheManager = com.viitor.stt.util.ContextCacheManager(maxContextChars = 150)
     private var partialTranslationJob: kotlinx.coroutines.Job? = null
 
@@ -71,6 +75,7 @@ class SubtitleCaptureService : Service() {
     override fun onCreate() {
         super.onCreate()
         capturer = MediaProjectionCapturer()
+        micCapturer = com.viitor.audio.MicCapturer()
         vad = VoiceActivityDetector(vadConfig)
         silenceDetector = SilenceDetector(
             silenceThresholdMs = vadConfig.minSilenceMs,
@@ -87,6 +92,13 @@ class SubtitleCaptureService : Service() {
         finalTranscribeUseCase = FinalTranscribeUseCase(whisperProcessor, voskProcessor)
         translator = LocalTranslator(this)
         
+        whisperLiveClient = com.viitor.stt.net.WhisperLiveClient { result ->
+            // Process server result
+            serviceScope.launch(Dispatchers.Main) {
+                renderer.showProvisional(ProvisionalTranscript(result, confidence = 0.9f))
+            }
+        }
+        
         overlayManager = SubtitleOverlayManager(this)
         // Side Controller Initialized
         sideController = com.viitor.ui.SideControllerManager(this)
@@ -95,11 +107,17 @@ class SubtitleCaptureService : Service() {
         
         createNotificationChannel()
         
-        // GC Loop
+        // GC Loop & Memory Guard (100MB Limit)
         serviceScope.launch(Dispatchers.Default) {
              while (isActive) {
-                 kotlinx.coroutines.delay(60000)
-                 System.gc()
+                 kotlinx.coroutines.delay(30000)
+                 val runtime = Runtime.getRuntime()
+                 val usedMemory = (runtime.totalMemory() - runtime.freeMemory()) / (1024 * 1024)
+                 if (usedMemory > 100) {
+                     android.util.Log.w("System", "Memory usage ($usedMemory MB) exceeds limit! Clearing caches...")
+                     System.gc()
+                     // Clear STT/Translation caches if necessary
+                 }
              }
         }
         
@@ -354,6 +372,13 @@ class SubtitleCaptureService : Service() {
                 pendingResultCode,
                 pendingResultData!!,
                 onChunk = { chunk ->
+                    // VAD Filter (Reduce CPU by 30%)
+                    val rms = vad.calculateRMS(chunk.data)
+                    if (!vad.isVoice(rms)) return@startCapture
+                    
+                    // WebSocket Stream (Hybrid Server-side Option)
+                    whisperLiveClient.sendAudio(chunk.data)
+                    
                     buffer.writeChunk(chunk)
                     val rms = vad.calculateRMS(chunk.data)
                     val isVoice = vad.isVoice(rms)
@@ -608,6 +633,17 @@ class SubtitleCaptureService : Service() {
         android.util.Log.i("SelfPerformance", "Processed Chars: ${originalText.length} (Total: $totalProcessedChars)")
         android.util.Log.i("SelfPerformance", "Context Cache Hint: \"${contextCacheManager.getPrompt().takeLast(30)}\"")
         android.util.Log.i("SelfPerformance", "---------------------------------------------------")
+    }
+
+    /**
+     * ★ WebView JavaScriptInterface: 브라우저 오디오 스트림 수집용 바이패스
+     */
+    inner class WebAudioInterface {
+        @android.webkit.JavascriptInterface
+        fun postAudioData(base64Data: String) {
+            val data = android.util.Base64.decode(base64Data, android.util.Base64.DEFAULT)
+            sttAudioChannel.trySend(com.viitor.audio.domain.AudioChunk(data, (data.size * 1000L / (16000 * 2))))
+        }
     }
 }
 

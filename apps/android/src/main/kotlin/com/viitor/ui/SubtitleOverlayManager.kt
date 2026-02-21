@@ -72,6 +72,7 @@ class SubtitleOverlayManager(private val context: Context) : ISubtitleOverlay {
                     params.flags = params.flags and WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE.inv()
                     
                     setupButtons(provisionalBinding!!.btnClose, provisionalBinding!!.btnSettings)
+                    setupDraggableAndResizable(provisionalBinding!!.root, params)
                     
                     windowManager.addView(provisionalBinding?.root, params)
                 } catch (e: Exception) { e.printStackTrace() }
@@ -124,17 +125,24 @@ class SubtitleOverlayManager(private val context: Context) : ISubtitleOverlay {
     }
 
     @SuppressLint("ClickableViewAccessibility")
-    private fun setupDraggable(view: View, params: WindowManager.LayoutParams) {
-        view.setOnTouchListener { _, event ->
+    private fun setupDraggableAndResizable(view: View, params: WindowManager.LayoutParams) {
+        val scaleDetector = android.view.ScaleGestureDetector(context, object : android.view.ScaleGestureDetector.SimpleOnScaleGestureListener() {
+            override fun onScale(detector: android.view.ScaleGestureDetector): Boolean {
+                view.scaleX *= detector.scaleFactor
+                view.scaleY *= detector.scaleFactor
+                return true
+            }
+        })
+
+        view.setOnTouchListener { v, event ->
+            scaleDetector.onTouchEvent(event)
+            
             when (event.action) {
                 MotionEvent.ACTION_DOWN -> {
                     initialX = params.x
                     initialY = params.y
                     initialTouchX = event.rawX
                     initialTouchY = event.rawY
-                    false // ClickListener(버튼)와 충돌 방지 위해 false? No, 버튼은 자식 뷰이므로 드래그는 배경이나 빈 공간 기준이어야 함.
-                    // 그러나 TextView 위에서 드래그하려면 true 필요. 버튼은 자체 터치 먹음.
-                    // 리턴값을 true로 하면 배경 드래그 가능 & 버튼 클릭은 버튼이 가져감.
                     true
                 }
                 MotionEvent.ACTION_MOVE -> {

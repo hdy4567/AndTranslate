@@ -126,8 +126,16 @@ class WhisperSTTProcessor(private val context: Context) : AutoCloseable {
             Log.w(TAG, "Interpreter not ready")
             return RESULT_NOT_READY
         }
+        
+        // ★ 실시간 최적화: Provisional 모드일 경우 오디오 앞부분만 빠르게 처리 (Latency 절감)
+        val dataToProcess = if (mode == TranscriptionMode.PROVISIONAL) {
+            audioData.take(audioData.size / 2).toByteArray() 
+        } else {
+            audioData
+        }
+
         return try {
-            val samples = pcm16ToFloat(audioData)
+            val samples = pcm16ToFloat(dataToProcess)
             if (samples.isEmpty()) return RESULT_NOT_READY
 
             val mel = computeLogMelSpectrogram(samples)
@@ -258,6 +266,10 @@ class WhisperSTTProcessor(private val context: Context) : AutoCloseable {
             result.add(nextToken)
             tokenIds[pos] = nextToken
             pos++
+            
+            // ★ Provisional 조기 종료 (Early Exit): 10토큰 내외에서 빠른 결과 반환
+            if (mode == TranscriptionMode.PROVISIONAL && result.size > 15) break
+            
             melBuf.rewind()
         }
 
