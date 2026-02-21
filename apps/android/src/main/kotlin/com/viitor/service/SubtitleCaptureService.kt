@@ -34,7 +34,6 @@ class SubtitleCaptureService : Service() {
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     
     private lateinit var capturer: MediaProjectionCapturer
-    private lateinit var micCapturer: com.viitor.audio.MicCapturer
     private lateinit var vad: VoiceActivityDetector
     private lateinit var silenceDetector: SilenceDetector
     private lateinit var buffer: AudioChunkBuffer
@@ -61,21 +60,17 @@ class SubtitleCaptureService : Service() {
     // ★ 강제 청킹 및 문맥 유지를 위한 상태 관리 (임시 버퍼 페이백)
     private var latestProvisionalText = ""
     private var contextBuffer = "" // 앞 문장이 안 끝났을 때 이어붙이기 위한 버퍼
-    private lateinit var whisperLiveClient: com.viitor.stt.net.WhisperLiveClient
-    private var isMicMode = false // Toggle for mic capture vs system capture
-    
     private val contextCacheManager = com.viitor.stt.util.ContextCacheManager(maxContextChars = 150)
     private var partialTranslationJob: kotlinx.coroutines.Job? = null
-
-    // ★ 실시간 성능 체크를 위한 지표
-    private var totalProcessedChars = 0
-    private var totalLatencyMs = 0L
-    private var processCount = 0
+    
+    // ★ v1.3 Viitor Killer 컴포넌트
+    private lateinit var nllbTranslator: com.viitor.translate.NLLBTranslator
+    private lateinit var thermalMonitor: com.viitor.audio.ThermalMonitor
+    private lateinit var speculativeDecoder: com.viitor.stt.SpeculativeDecoder
 
     override fun onCreate() {
         super.onCreate()
         capturer = MediaProjectionCapturer()
-        micCapturer = com.viitor.audio.MicCapturer()
         vad = VoiceActivityDetector(vadConfig)
         silenceDetector = SilenceDetector(
             silenceThresholdMs = vadConfig.minSilenceMs,
@@ -92,12 +87,16 @@ class SubtitleCaptureService : Service() {
         finalTranscribeUseCase = FinalTranscribeUseCase(whisperProcessor, voskProcessor)
         translator = LocalTranslator(this)
         
-        whisperLiveClient = com.viitor.stt.net.WhisperLiveClient { result ->
-            // Process server result
-            serviceScope.launch(Dispatchers.Main) {
-                renderer.showProvisional(ProvisionalTranscript(result, confidence = 0.9f))
-            }
-        }
+        // ★ v1.3: NLLB 오프라인 번역기 초기화
+        nllbTranslator = com.viitor.translate.NLLBTranslator(this)
+        serviceScope.launch(Dispatchers.IO) { nllbTranslator.loadModel() }
+        
+        // ★ v1.3: 투기적 디코더 (Tiny=draft, Final=verify)
+        speculativeDecoder = com.viitor.stt.SpeculativeDecoder(whisperProcessor, whisperProcessor)
+        
+        // ★ v1.3: 발열 모니터링
+        thermalMonitor = com.viitor.audio.ThermalMonitor(this)
+        thermalMonitor.start()
         
         overlayManager = SubtitleOverlayManager(this)
         // Side Controller Initialized
@@ -250,13 +249,9 @@ class SubtitleCaptureService : Service() {
                 for (renderBase in partialTranslationChannel) {
                     try {
                         val translated = translator.translate(renderBase.text, "ja", "ko")
-                        val latency = System.currentTimeMillis() - renderBase.timestamp.toLong() // Note: ProvisionalTranscript needs timestamp or we use current
-                        
                         withContext(Dispatchers.Main) {
                             renderer.showProvisional(renderBase.copy(translatedText = translated))
                         }
-                        
-                        android.util.Log.d("Performance", "★ [Real-time Stream] KO Translate Latency: ${System.currentTimeMillis() - renderBase.timestamp.toLong()}ms")
                     } catch (e: Exception) {
                         android.util.Log.w("Pipeline", "Partial translate failed: ${e.message}")
                     }
@@ -372,13 +367,6 @@ class SubtitleCaptureService : Service() {
                 pendingResultCode,
                 pendingResultData!!,
                 onChunk = { chunk ->
-                    // VAD Filter (Reduce CPU by 30%)
-                    val rms = vad.calculateRMS(chunk.data)
-                    if (!vad.isVoice(rms)) return@startCapture
-                    
-                    // WebSocket Stream (Hybrid Server-side Option)
-                    whisperLiveClient.sendAudio(chunk.data)
-                    
                     buffer.writeChunk(chunk)
                     val rms = vad.calculateRMS(chunk.data)
                     val isVoice = vad.isVoice(rms)
@@ -448,11 +436,7 @@ class SubtitleCaptureService : Service() {
             System.arraycopy(c.data, 0, mergedData, offset, c.data.size)
             offset += c.data.size
         }
-        return com.viitor.audio.domain.AudioChunk(
-            mergedData, 
-            totalMs, 
-            arrivalTimestamp = chunks.firstOrNull()?.arrivalTimestamp ?: System.currentTimeMillis()
-        )
+        return com.viitor.audio.domain.AudioChunk(mergedData, totalMs)
     }
 
 
@@ -574,12 +558,6 @@ class SubtitleCaptureService : Service() {
                         withContext(Dispatchers.Main) {
                             renderer.replaceWithFinal(BatchTranscript(whisperTranscript.text, chunkCount = 1, translatedText = whisperTranslatedText))
                         }
-                        
-                        // 보정된 텍스트도 문맥 캐시에 반영
-                        contextCacheManager.appendContext(whisperTranscript.text)
-                        
-                        // 자가 성능 체크 로그
-                        logSelfPerformance(whisperTranscript.text, batch.firstOrNull()?.arrivalTimestamp)
                     }
                 }
             }
@@ -616,34 +594,6 @@ class SubtitleCaptureService : Service() {
             android.util.Log.e("Pipeline", "Fast network translate timeout or error: ${e.message}")
         }
         return@withContext null
-    }
-
-    private fun logSelfPerformance(originalText: String, arrivalTs: Long?) {
-        val arrival = arrivalTs ?: return
-        val now = System.currentTimeMillis()
-        val latency = now - arrival
-        
-        totalLatencyMs += latency
-        totalProcessedChars += originalText.length
-        processCount++
-        
-        val avgLatency = if (processCount > 0) totalLatencyMs / processCount else 0
-        android.util.Log.i("SelfPerformance", "---------------- PERFORMANCE CHECK ----------------")
-        android.util.Log.i("SelfPerformance", "Current End-to-End Latency: ${latency}ms (Avg: ${avgLatency}ms)")
-        android.util.Log.i("SelfPerformance", "Processed Chars: ${originalText.length} (Total: $totalProcessedChars)")
-        android.util.Log.i("SelfPerformance", "Context Cache Hint: \"${contextCacheManager.getPrompt().takeLast(30)}\"")
-        android.util.Log.i("SelfPerformance", "---------------------------------------------------")
-    }
-
-    /**
-     * ★ WebView JavaScriptInterface: 브라우저 오디오 스트림 수집용 바이패스
-     */
-    inner class WebAudioInterface {
-        @android.webkit.JavascriptInterface
-        fun postAudioData(base64Data: String) {
-            val data = android.util.Base64.decode(base64Data, android.util.Base64.DEFAULT)
-            sttAudioChannel.trySend(com.viitor.audio.domain.AudioChunk(data, (data.size * 1000L / (16000 * 2))))
-        }
     }
 }
 

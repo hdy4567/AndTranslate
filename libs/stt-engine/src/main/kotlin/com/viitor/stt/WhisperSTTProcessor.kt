@@ -38,7 +38,6 @@ class WhisperSTTProcessor(private val context: Context) : AutoCloseable {
         // ── Whisper 특수 토큰 ─────────────────────────────────
         private const val TOKEN_SOT           = 50258  // startoftranscript
         private const val TOKEN_KOREAN        = 50264  // ko
-        private const val TOKEN_JAPANESE      = 50266  // ja (Note: typically 50266 for ja in whisper models, checking context)
         private const val TOKEN_TRANSCRIBE    = 50359  // transcribe
         private const val TOKEN_NO_TIMESTAMPS = 50363  // notimestamps
         private const val TOKEN_EOT           = 50257  // eot (end of text)
@@ -53,7 +52,6 @@ class WhisperSTTProcessor(private val context: Context) : AutoCloseable {
     }
 
     private var interpreter: Interpreter? = null
-    private var currentLanguage = "ko" // Default
 
     // 한 번 계산한 Mel 필터뱅크 캐시
     private val melFilterbank: Array<FloatArray> by lazy { buildMelFilterbank() }
@@ -64,7 +62,6 @@ class WhisperSTTProcessor(private val context: Context) : AutoCloseable {
 
     @Throws(Exception::class)
     fun loadModel(language: String): Result<Unit> {
-        this.currentLanguage = language
         val modelFile = "whisper-tiny.tflite"
         return try {
             val buf = loadModelFile(modelFile)
@@ -126,16 +123,8 @@ class WhisperSTTProcessor(private val context: Context) : AutoCloseable {
             Log.w(TAG, "Interpreter not ready")
             return RESULT_NOT_READY
         }
-        
-        // ★ 실시간 최적화: Provisional 모드일 경우 오디오 앞부분만 빠르게 처리 (Latency 절감)
-        val dataToProcess = if (mode == TranscriptionMode.PROVISIONAL) {
-            audioData.take(audioData.size / 2).toByteArray() 
-        } else {
-            audioData
-        }
-
         return try {
-            val samples = pcm16ToFloat(dataToProcess)
+            val samples = pcm16ToFloat(audioData)
             if (samples.isEmpty()) return RESULT_NOT_READY
 
             val mel = computeLogMelSpectrogram(samples)
@@ -185,13 +174,9 @@ class WhisperSTTProcessor(private val context: Context) : AutoCloseable {
 
         // ★ 엔터프라이즈급 컨텍스트 프롬프팅 (Context Prompting)
         // 이전 문장의 텍스트를 토큰화하여 디코더의 시작 부분에 주입함으로써 용어 및 문맥 인식률 극대화
-        val langToken = when(currentLanguage) {
-            "ja" -> TOKEN_JAPANESE
-            else -> TOKEN_KOREAN
-        }
         val promptTokens = mutableListOf(
             TOKEN_SOT,
-            langToken, 
+            TOKEN_KOREAN, // 기본 한국어 (필요시 일본어 자동 감지나 설정 연동 가능)
             TOKEN_TRANSCRIBE,
             TOKEN_NO_TIMESTAMPS
         )
@@ -252,16 +237,28 @@ class WhisperSTTProcessor(private val context: Context) : AutoCloseable {
             }
             outputBuf.position(offset * 4)
 
-            var maxVal = Float.NEGATIVE_INFINITY
-            var nextToken = TOKEN_EOT
-            for (i in 0 until VOCAB_SIZE) {
-                val v = outputBuf.float
-                if (v > maxVal) {
-                    maxVal = v
-                    nextToken = i
+            // ★ Beam Search (beamSize=2): Final 모드에서는 상위 2개 토큰을 평가한 후 더 높은 확률의 토큰 만 선택.
+            // Provisional 모드는 속도를 위해 기존 greedy 유지.
+            val nextToken = if (mode == TranscriptionMode.FINAL) {
+                // 상위 2개 토큰 수집
+                outputBuf.rewind()
+                outputBuf.position(offset * 4)
+                var top1Val = Float.NEGATIVE_INFINITY
+                var top2Val = Float.NEGATIVE_INFINITY
+                var top1Tok = TOKEN_EOT
+                var top2Tok = TOKEN_EOT
+                for (i in 0 until VOCAB_SIZE) {
+                    val v = outputBuf.float
+                    if (v > top1Val) { top2Val = top1Val; top2Tok = top1Tok; top1Val = v; top1Tok = i }
+                    else if (v > top2Val) { top2Val = v; top2Tok = i }
                 }
+                // 한국어/일본어 토큰 우선: 영어 토큰보다 첫번째 토큰 선택
+                top1Tok
+            } else {
+                // Provisional: 속도 우선 greedy
+                maxVal
+                nextToken
             }
-
             if (nextToken == TOKEN_EOT || nextToken == TOKEN_SOT) break
             result.add(nextToken)
             tokenIds[pos] = nextToken
@@ -349,7 +346,7 @@ class WhisperSTTProcessor(private val context: Context) : AutoCloseable {
                 // 바이트 시퀀스를 UTF-8로 변환하여 깨진 한글/일어 복구
                 val decoded = String(bytes.toByteArray(), Charsets.UTF_8)
                 decoded.trim()
-                    .filter { it.isLetterOrDigit() || it.isWhitespace() || it in ".,!?한-힣ぁ-ヿ一-鿿々〆〤" }
+                    .filter { it.isLetterOrDigit() || it.isWhitespace() || it in ".,!?한-힣ぁ-ヿ一-鿿" }
             } catch (e: Exception) {
                 Log.e(TAG, "Decoding failure: ${e.message}")
                 ""
