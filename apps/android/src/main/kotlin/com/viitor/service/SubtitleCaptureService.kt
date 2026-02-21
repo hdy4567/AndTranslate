@@ -68,6 +68,11 @@ class SubtitleCaptureService : Service() {
     private lateinit var thermalMonitor: com.viitor.audio.ThermalMonitor
     private lateinit var speculativeDecoder: com.viitor.stt.SpeculativeDecoder
 
+    // ★ v1.4 Safe Additive 컴포넌트
+    private lateinit var audioFocusManager: com.viitor.audio.AudioFocusManager
+    private lateinit var serviceWatchdog: com.viitor.audio.ServiceWatchdog
+    private var isCaptureActive = true  // AudioFocus 로스 시 일시정지 플래그
+
     override fun onCreate() {
         super.onCreate()
         capturer = MediaProjectionCapturer()
@@ -97,6 +102,16 @@ class SubtitleCaptureService : Service() {
         // ★ v1.3: 발열 모니터링
         thermalMonitor = com.viitor.audio.ThermalMonitor(this)
         thermalMonitor.start()
+
+        // ★ v1.4: 오디오 포커스 관리 (=전화 수신 시 자동 일시정지)
+        audioFocusManager = com.viitor.audio.AudioFocusManager(this)
+        audioFocusManager.onFocusLost  = { isCaptureActive = false }
+        audioFocusManager.onFocusGained = { isCaptureActive = true }
+        audioFocusManager.requestFocus()
+
+        // ★ v1.4: 서비스 생존 감시견 (=크래시 시 자동 재시작)
+        serviceWatchdog = com.viitor.audio.ServiceWatchdog(this)
+        serviceWatchdog.register()
         
         overlayManager = SubtitleOverlayManager(this)
         // Side Controller Initialized
@@ -367,8 +382,21 @@ class SubtitleCaptureService : Service() {
                 pendingResultCode,
                 pendingResultData!!,
                 onChunk = { chunk ->
-                    buffer.writeChunk(chunk)
-                    val rms = vad.calculateRMS(chunk.data)
+                    // ★ v1.4: AudioFocus 로스(전화 수신) 시 스킵
+                    if (!isCaptureActive) return@startCapture
+                    
+                    // ★ v1.4: DC Offset 제거 + 엸어 ID 사전 감지
+                    val cleanData = com.viitor.stt.AudioPreprocessor.preprocess(chunk.data)
+                    val autoLang = com.viitor.stt.AudioPreprocessor.detectLanguage(cleanData)
+                    val processedChunk = if (autoLang != currentLanguage) {
+                        whisperProcessor.setLanguage(autoLang)
+                        chunk.copy(data = cleanData)
+                    } else {
+                        chunk.copy(data = cleanData)
+                    }
+                    
+                    buffer.writeChunk(processedChunk)
+                    val rms = vad.calculateRMS(processedChunk.data)
                     val isVoice = vad.isVoice(rms)
 
                     if (System.currentTimeMillis() % 1000 < 50) {
@@ -594,6 +622,17 @@ class SubtitleCaptureService : Service() {
             android.util.Log.e("Pipeline", "Fast network translate timeout or error: ${e.message}")
         }
         return@withContext null
+    }
+
+    /**
+     * ★ v1.4: 서비스 종료 시 안전 정리 + Watchdog 재시작 신호
+     */
+    override fun onDestroy() {
+        super.onDestroy()
+        audioFocusManager.abandonFocus()
+        thermalMonitor.stop()
+        serviceWatchdog.notifyServiceStopping()  // 크래시가 아닌 경우에도 watchdog 알림
+        serviceWatchdog.unregister()
     }
 }
 
