@@ -60,7 +60,13 @@ class SubtitleCaptureService : Service() {
     // ★ 강제 청킹 및 문맥 유지를 위한 상태 관리 (임시 버퍼 페이백)
     private var latestProvisionalText = ""
     private var contextBuffer = "" // 앞 문장이 안 끝났을 때 이어붙이기 위한 버퍼
+    private val contextCacheManager = com.viitor.stt.util.ContextCacheManager(maxContextChars = 150)
     private var partialTranslationJob: kotlinx.coroutines.Job? = null
+
+    // ★ 실시간 성능 체크를 위한 지표
+    private var totalProcessedChars = 0
+    private var totalLatencyMs = 0L
+    private var processCount = 0
 
     override fun onCreate() {
         super.onCreate()
@@ -226,9 +232,13 @@ class SubtitleCaptureService : Service() {
                 for (renderBase in partialTranslationChannel) {
                     try {
                         val translated = translator.translate(renderBase.text, "ja", "ko")
+                        val latency = System.currentTimeMillis() - renderBase.timestamp.toLong() // Note: ProvisionalTranscript needs timestamp or we use current
+                        
                         withContext(Dispatchers.Main) {
                             renderer.showProvisional(renderBase.copy(translatedText = translated))
                         }
+                        
+                        android.util.Log.d("Performance", "★ [Real-time Stream] KO Translate Latency: ${System.currentTimeMillis() - renderBase.timestamp.toLong()}ms")
                     } catch (e: Exception) {
                         android.util.Log.w("Pipeline", "Partial translate failed: ${e.message}")
                     }
@@ -253,8 +263,8 @@ class SubtitleCaptureService : Service() {
                         if (next != null) {
                             chunksToProcess.add(next)
                             totalMs += next.durationMs
-                            // 최대 1초 이상은 한 번에 묶지 않도록 방어 (너무 큰 STT 연산 방지)
-                            if (totalMs >= 1000L) break
+                            // 최대 0.5초 이상은 한 번에 묶지 않도록 방어 (Latency Catch-up 최적화)
+                            if (totalMs >= 500L) break
                         } else {
                             break
                         }
@@ -274,7 +284,7 @@ class SubtitleCaptureService : Service() {
                                 synchronized(whisperLock) {
                                     whisperAccumulator.add(chunk)
                                     whisperAccumulatedMs += chunk.durationMs
-                                    if (whisperAccumulatedMs >= 1500L) { // Whisper도 실시간성을 약간 높여서 1.5초로 세팅
+                                    if (whisperAccumulatedMs >= 1000L) { // Whisper도 실시간성을 극대화하여 1.0초로 세팅
                                         snapshot = whisperAccumulator.toList()
                                         snapMs = whisperAccumulatedMs
                                         whisperAccumulator.clear()
@@ -286,7 +296,8 @@ class SubtitleCaptureService : Service() {
                                 }
                                 snapshot?.let {
                                     val merged = mergeChunks(it, snapMs)
-                                    provisionalTranscribeUseCase.execute(merged, "WHISPER")
+                                    val prompt = contextCacheManager.getPrompt()
+                                    provisionalTranscribeUseCase.execute(merged, "WHISPER", prompt = prompt)
                                 }
                             }
                         }
@@ -301,6 +312,8 @@ class SubtitleCaptureService : Service() {
                                 lastTranslatedPartialText = ""
                                 lastPartialTranslateTime = System.currentTimeMillis()
                                 latestProvisionalText = ""
+                                // 최종 확정 시 캐시에 추가하여 다음 문장의 캐치력 강화
+                                contextCacheManager.appendContext(base.text)
                             } else {
                                 latestProvisionalText = base.text
 
@@ -375,8 +388,9 @@ class SubtitleCaptureService : Service() {
                             // Whisper 폴백 엔진인 경우에만 이전 배치 처리 로직 수행
                             if (batch.isNotEmpty() && activeEngine == "WHISPER") {
                                 android.util.Log.d("Pipeline", "▶ [STT] Whisper Finalize 구간 처리 시작")
+                                val prompt = contextCacheManager.getPrompt()
                                 val transcript = sttMutex.withLock {
-                                    finalTranscribeUseCase.execute(batch, activeEngine)
+                                    finalTranscribeUseCase.execute(batch, activeEngine, prompt = prompt)
                                 }
                                 android.util.Log.d("Pipeline", "◀ [STT] Whisper Finalize 결과: ${transcript.text.take(30)}...")
                                 withContext(Dispatchers.Main) { renderer.replaceWithFinal(transcript) }
@@ -409,7 +423,11 @@ class SubtitleCaptureService : Service() {
             System.arraycopy(c.data, 0, mergedData, offset, c.data.size)
             offset += c.data.size
         }
-        return com.viitor.audio.domain.AudioChunk(mergedData, totalMs)
+        return com.viitor.audio.domain.AudioChunk(
+            mergedData, 
+            totalMs, 
+            arrivalTimestamp = chunks.firstOrNull()?.arrivalTimestamp ?: System.currentTimeMillis()
+        )
     }
 
 
@@ -450,24 +468,24 @@ class SubtitleCaptureService : Service() {
     }
 
     private suspend fun processFinalText(text: String, batch: List<com.viitor.audio.domain.AudioChunk>, tag: String, activeEngine: String) {
-        // ★ 엔터프라이즈급 일본어 문맥 조립기 (Enterprise Context-Aware Assembler)
-        // 불완전한 문장 조각("나는", "어제", "밥을")을 의미 단위가 성립할 때까지(최대 80자) 지능적으로 결합하여 번역률 2배 향상
+        // ★ 하이엔드 문맥 조립기 (Enhanced Context-Aware Assembler)
+        // 불완전한 문장 조각들을 의미 단위가 성립할 때까지 지능적으로 결합
 
-        val cleanText = text.replace(Regex("\\s+"), "").trim()
+        val cleanText = text.replace(Regex("\\s+"), " ").trim()
         if (cleanText.isEmpty()) return
 
         val combinedText = if (contextBuffer.isNotBlank()) "$contextBuffer $cleanText" else cleanText
         
         android.util.Log.d("Pipeline", "================== $tag [Context Assembly] ==================")
         
-        // 1. 일본어 종결어미 및 문장 부호 정밀 분석
+        // 1. 일본어/한국어 종결 정밀 분석
         val terminalPunctuations = Regex(".*[.!?。！？\\n]$")
-        // 완벽한 종결을 나타내는 어미 (이 경우 즉시 번역 후 버퍼 비움)
-        val strongEndingParticles = Regex(".*(ます|です|ました|でした|ましょう|でしょう|ください|なさい|ません|だ|ね|よ|ぞ|ぜ|わ|かな|かしら|ますね|ですね)$")
-        // 문장이 이어지는 접속 조사/어미 (이 경우 다음 번역기에 컨텍스트 제공을 위해 일부 페이백 보류)
-        val continuingParticles = Regex(".*(て|で|と|が|けど|から|ので|のに|し|たり)$")
-        // 의미 없는 감탄사 (단독 번역하지 않고 무시/결합)
-        val interjections = Regex("^(あ|あの|え|えっと|その|まぁ|なんか|うーん|はい|いいえ)$")
+        // 완벽한 종결 어미 (일본어: ます, です 등 / 한국어: ~다, ~요 등)
+        val strongEndingParticles = Regex(".*(ます|です|ました|でした|ましょう|でしょう|ください|なさい|ません|だ|ね|よ|ぞ|ぜ|わ|かな|かしら|ますね|ですね|입니다|합니다|습니다|해요|세요|라|다|요)$")
+        // 문장이 이어지는 접속 조사 (일본어: て, で, が 등 / 한국어: ~고, ~며, ~나 등)
+        val continuingParticles = Regex(".*(て|で|と|가|けど|から|ので|のに|し|たり|고|며|나|니|서|면)$")
+        // 감탄사 및 불필요한 추임새
+        val interjections = Regex("^(あ|あの|え|えっと|その|まぁ|なんか|우|음|그|어|음...|저기)$")
 
         var shouldFlush = false
         var isContinuing = false
@@ -476,82 +494,73 @@ class SubtitleCaptureService : Service() {
             shouldFlush = true
         } else if (combinedText.matches(continuingParticles)) {
             isContinuing = true
-            // 문법상 이어지더라도, 길이가 40자를 넘으면 막대한 번역 지연 및 OOM 방지를 위해 강제 번역 플러시
-            if (combinedText.length > 40) shouldFlush = true 
+            // 문법상 이어지더라도 50자를 넘으면 지연 방지를 위해 플러시
+            if (combinedText.length > 50) shouldFlush = true 
         } else {
-            // 그 외의 경우 (명사로 끝나는 등) 좀 더 지연시킴
-            if (combinedText.length > 50) shouldFlush = true
+            // 명사형 종결 등은 60자까지 대기
+            if (combinedText.length > 60) shouldFlush = true
         }
 
-        // 극단적인 길이 방어 (UI 렌더링 터짐 및 AI 엔진 OOM 방지)
-        if (combinedText.length > 80) shouldFlush = true
+        // 극단적 길이 방어
+        if (combinedText.length > 100) shouldFlush = true
 
-        // 의미 없는 단일 감탄사면 플러시하지 않고 모음
         if (combinedText.matches(interjections) && combinedText.length < 5) {
             shouldFlush = false
         }
 
         val textToTranslate = combinedText
 
-        if (shouldFlush) {
-            contextBuffer = "" // 플러시: 완벽한 1문장 처리 완료
-            if (isContinuing) {
-               // 연결형 어미로 끝난 경우, 다음 문장의 앞뒤 문맥(Attention) 유지를 위해 마지막 3글자를 다음 버퍼에 "페이백(Payback)"
-               val paybackLength = kotlin.math.min(combinedText.length, 3)
-               contextBuffer = combinedText.substring(combinedText.length - paybackLength)
-               android.util.Log.d("Pipeline", "★ [Context Assembler] 접속사 감지, 페이백 버퍼 유지: $contextBuffer")
-            }
-        } else {
-            // 불완전 문장은 번역 퀄리티 파괴의 주범이므로번역기에는 던지되 다음 턴으로 문맥 이월 (페이백)
-            contextBuffer = combinedText 
-            android.util.Log.d("Pipeline", "★ [Context Assembler] 불완전 문장 홀드: $contextBuffer")
-        }
-
+        // UI에 먼저 즉시 반영 (Low Latency)
         val finalT = BatchTranscript(textToTranslate, chunkCount = 1)
         withContext(Dispatchers.Main) { renderer.replaceWithFinal(finalT) }
 
-        if (isTranslationEnabled) {
-            android.util.Log.d("Pipeline", "▶ [Translator] $tag 완성 문맥 번역 요청: $textToTranslate")
-            partialTranslationJob?.cancel() // 이전 잔여 partial 번역 완벽 무시
+        if (shouldFlush) {
+            val prevContext = contextBuffer // 이전 컨텍스트 (Hint로 사용 가능)
+            contextBuffer = "" 
             
-            // 온라인 빠른 번역 시도
-            val fastTranslated = fastNetworkTranslate(textToTranslate)
-            val translated = if (fastTranslated != null) {
-                android.util.Log.d("Pipeline", "◀ [Translator] [FAST-NETWORK] 번역 완료: $fastTranslated")
-                fastTranslated
-            } else {
-                val t = translator.translate(textToTranslate, "ja", "ko")
-                android.util.Log.d("Pipeline", "◀ [Translator] [OFFLINE-ARGOS] 번역 완료: $t")
-                t
+            if (isContinuing) {
+               // 접속사 종결 시 다음 문맥 유지를 위해 페이백
+               val paybackLength = kotlin.math.min(combinedText.length, 5)
+               contextBuffer = combinedText.substring(combinedText.length - paybackLength)
             }
             
-            withContext(Dispatchers.Main) {
-                renderer.replaceWithFinal(finalT.copy(translatedText = translated))
-            }
-        }
-
-        // ★ 하이브리드 페이백 (Payback) 로직
-        // Vosk가 빠르게 자막을 띄운 뒤, 배경에서 백그라운드로 돌린 Whisper 결과가 더 깔끔하면 덮어쓰기 실시
-        if (batch.isNotEmpty() && activeEngine == "VOSK" && combinedText.length > 3) {
-            serviceScope.launch(Dispatchers.IO) {
-                val whisperTranscript = sttMutex.withLock {
-                    finalTranscribeUseCase.execute(batch, "WHISPER")
+            // 번역 및 최종화 로직
+            if (isTranslationEnabled) {
+                partialTranslationJob?.cancel()
+                val translated = fastNetworkTranslate(textToTranslate) ?: translator.translate(textToTranslate, "ja", "ko")
+                withContext(Dispatchers.Main) {
+                    renderer.replaceWithFinal(finalT.copy(translatedText = translated))
                 }
-                
-                if (whisperTranscript.text.isNotBlank() && whisperTranscript.text != combinedText) {
-                    android.util.Log.d("Pipeline", "▶ [Hybrid-Payback] 위스퍼 통로 페이백 실시!")
-                    android.util.Log.d("Pipeline", "   Vosk: $combinedText")
-                    android.util.Log.d("Pipeline", "   Whisper: ${whisperTranscript.text}")
+            }
+
+            // ★ 하이브리드 페이백 (Payback) 로직: 정확도 보완 (Vosk -> Whisper)
+            if (batch.isNotEmpty() && activeEngine == "VOSK") {
+                serviceScope.launch(Dispatchers.IO) {
+                    val whisperTranscript = sttMutex.withLock {
+                        // Whisper에 이전 문맥(prevContext)을 힌트로 전달하여 인식률 강화
+                        finalTranscribeUseCase.execute(batch, "WHISPER", prompt = prevContext)
+                    }
                     
-                    val whisperTranslatedText = if (isTranslationEnabled) {
-                        fastNetworkTranslate(whisperTranscript.text) ?: translator.translate(whisperTranscript.text, "ja", "ko")
-                    } else ""
-                    
-                    withContext(Dispatchers.Main) {
-                        renderer.replaceWithFinal(BatchTranscript(whisperTranscript.text, chunkCount = 1, translatedText = whisperTranslatedText))
+                    if (whisperTranscript.text.isNotBlank() && whisperTranscript.text != combinedText) {
+                        android.util.Log.d("Pipeline", "▶ [Hybrid-Payback] Whisper 보정 실시: ${whisperTranscript.text}")
+                        val whisperTranslatedText = if (isTranslationEnabled) {
+                            fastNetworkTranslate(whisperTranscript.text) ?: translator.translate(whisperTranscript.text, "ja", "ko")
+                        } else ""
+                        withContext(Dispatchers.Main) {
+                            renderer.replaceWithFinal(BatchTranscript(whisperTranscript.text, chunkCount = 1, translatedText = whisperTranslatedText))
+                        }
+                        
+                        // 보정된 텍스트도 문맥 캐시에 반영
+                        contextCacheManager.appendContext(whisperTranscript.text)
+                        
+                        // 자가 성능 체크 로그
+                        logSelfPerformance(whisperTranscript.text, batch.firstOrNull()?.arrivalTimestamp)
                     }
                 }
             }
+        } else {
+            contextBuffer = combinedText 
+            android.util.Log.d("Pipeline", "★ [Context Assembler] 문맥 유지 중: $contextBuffer")
         }
     }
 
@@ -582,6 +591,23 @@ class SubtitleCaptureService : Service() {
             android.util.Log.e("Pipeline", "Fast network translate timeout or error: ${e.message}")
         }
         return@withContext null
+    }
+
+    private fun logSelfPerformance(originalText: String, arrivalTs: Long?) {
+        val arrival = arrivalTs ?: return
+        val now = System.currentTimeMillis()
+        val latency = now - arrival
+        
+        totalLatencyMs += latency
+        totalProcessedChars += originalText.length
+        processCount++
+        
+        val avgLatency = if (processCount > 0) totalLatencyMs / processCount else 0
+        android.util.Log.i("SelfPerformance", "---------------- PERFORMANCE CHECK ----------------")
+        android.util.Log.i("SelfPerformance", "Current End-to-End Latency: ${latency}ms (Avg: ${avgLatency}ms)")
+        android.util.Log.i("SelfPerformance", "Processed Chars: ${originalText.length} (Total: $totalProcessedChars)")
+        android.util.Log.i("SelfPerformance", "Context Cache Hint: \"${contextCacheManager.getPrompt().takeLast(30)}\"")
+        android.util.Log.i("SelfPerformance", "---------------------------------------------------")
     }
 }
 

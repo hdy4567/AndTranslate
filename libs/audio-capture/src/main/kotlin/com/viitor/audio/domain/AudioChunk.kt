@@ -5,5 +5,6 @@ package com.viitor.audio.domain
  */
 data class AudioChunk(
     val data: ByteArray,               // PCM 16bit
-    val durationMs: Long               // 1500ms (청크 길이)
+    val durationMs: Long,              // 1500ms (청크 길이)
+    val arrivalTimestamp: Long = System.currentTimeMillis()
 )

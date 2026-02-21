@@ -12,7 +12,7 @@ class FinalTranscribeUseCase(
     private val whisper: WhisperSTTProcessor,
     private val vosk: com.viitor.stt.VoskSTTProcessor? = null
 ) {
-    suspend fun execute(batch: List<AudioChunk>, engineType: String = "WHISPER"): BatchTranscript {
+    suspend fun execute(batch: List<AudioChunk>, engineType: String = "WHISPER", prompt: String = ""): BatchTranscript {
         // 기존의 하드코딩된 제한(batch.size <= 4)을 완전히 해제하여 무한에 가까운 버퍼링 허용
         require(batch.isNotEmpty()) { "ERR_EMPTY_BATCH" }
         
@@ -27,7 +27,8 @@ class FinalTranscribeUseCase(
         } else {
             val resultText = whisper.transcribe(
                 mergedAudio,
-                mode = TranscriptionMode.FINAL  // beam=5
+                mode = TranscriptionMode.FINAL,
+                promptText = prompt
             )
             BatchTranscript(
                 text = resultText,

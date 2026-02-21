@@ -7,6 +7,7 @@ data class ProvisionalTranscript(
     val text: String,
     val translatedText: String? = null,
     val confidence: Float,
-    val isFinalChunk: Boolean = false
+    val isFinalChunk: Boolean = false,
+    val timestamp: Long = System.currentTimeMillis()
 )
 

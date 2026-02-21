@@ -14,7 +14,7 @@ class ProvisionalTranscribeUseCase(
     private val whisper: WhisperSTTProcessor,
     private val vosk: com.viitor.stt.VoskSTTProcessor? = null
 ) {
-    suspend fun execute(chunk: AudioChunk, engineType: String = "WHISPER"): ProvisionalTranscript {
+    suspend fun execute(chunk: AudioChunk, engineType: String = "WHISPER", prompt: String = ""): ProvisionalTranscript {
         return withContext(Dispatchers.Default) {
             if (engineType == "VOSK" && vosk != null) {
                 // Vosk 처리
@@ -24,18 +24,21 @@ class ProvisionalTranscribeUseCase(
                 ProvisionalTranscript(
                     text = result.text,
                     confidence = confidence,
-                    isFinalChunk = !result.isPartial
+                    isFinalChunk = !result.isPartial,
+                    timestamp = chunk.arrivalTimestamp
                 )
             } else {
                 // Whisper 처리 (기존 로직)
                 val resultText = whisper.transcribe(
                     chunk.data, 
-                    mode = TranscriptionMode.PROVISIONAL
+                    mode = TranscriptionMode.PROVISIONAL,
+                    promptText = prompt
                 )
                 ProvisionalTranscript(
                     text = resultText,
                     confidence = 0.5f,
-                    isFinalChunk = false
+                    isFinalChunk = false,
+                    timestamp = chunk.arrivalTimestamp
                 )
             }
         }
