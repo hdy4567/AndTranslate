@@ -77,8 +77,15 @@ class SubtitleCaptureService : Service() {
     private val audioEffectsChain = com.viitor.audio.AudioEffectsChain()
     private val tokenHealingBuffer = com.viitor.stt.WhisperTokenHealingBuffer(overlapSamples = 8000)
     private val prefixTranslationCache = com.viitor.translate.PrefixTranslationCache(maxEntries = 1000)
-    // LockFreeCircularBuffer 실제 오디오 파이프라인 대체 버퍼
     private val lockFreeAudioBuf = com.viitor.audio.LockFreeCircularBuffer(capacity = 512)
+
+    // ★ v1.6 Maximum Performance 컴포넌트
+    private val promptOptimizer   = com.viitor.stt.WhisperPromptOptimizer()
+    private val adaptiveVAD       = com.viitor.audio.AdaptiveNoiseFloorVAD()
+    private val streamingPipeline = com.viitor.translate.StreamingTranslationPipeline()
+    private val chunkingStrategy  = com.viitor.translate.AdaptiveChunkingStrategy(baseChunkMs = 40)
+    private val stabilityManager  = com.viitor.service.ServiceStabilityManager()
+    private lateinit var audioRouteReceiver: com.viitor.audio.AudioRouteChangeReceiver
 
     override fun onCreate() {
         super.onCreate()
@@ -119,6 +126,29 @@ class SubtitleCaptureService : Service() {
         // ★ v1.4: 서비스 생존 감시견 (=크래시 시 자동 재시작)
         serviceWatchdog = com.viitor.audio.ServiceWatchdog(this)
         serviceWatchdog.register()
+
+        // ★ v1.6: 오디오 라우트 변경 수신 (이어폰 꽂힘/뽑힘 자동 재연결)
+        audioRouteReceiver = com.viitor.audio.AudioRouteChangeReceiver(this)
+        audioRouteReceiver.onRouteChanged = { event ->
+            android.util.Log.d("Service", "Audio route changed: $event")
+            adaptiveVAD.reset()  // 새 환경에 적응형 VAD 리셋
+        }
+        audioRouteReceiver.register()
+
+        // ★ v1.6: 메모리 압박 응답 콜백 등록
+        stabilityManager.onMemoryModerate = {
+            prefixTranslationCache.clear()
+        }
+        stabilityManager.onMemoryLow = {
+            prefixTranslationCache.clear()
+            contextCacheManager.clear()
+        }
+        stabilityManager.onMemoryCritical = {
+            prefixTranslationCache.clear()
+            contextCacheManager.clear()
+            android.util.Log.e("Service", "CRITICAL memory: buffers cleared! ${stabilityManager.getMemoryReport()}")
+        }
+        registerComponentCallbacks(stabilityManager)
         
         overlayManager = SubtitleOverlayManager(this)
         // Side Controller Initialized
@@ -640,13 +670,19 @@ class SubtitleCaptureService : Service() {
     }
 
     /**
-     * ★ v1.4: 서비스 종료 시 안전 정리 + Watchdog 재시작 신호
+     * ★ v1.4~v1.6: 서비스 종료 시 안전 정리 + Watchdog 재시작 신호
      */
     override fun onDestroy() {
         super.onDestroy()
         audioFocusManager.abandonFocus()
         thermalMonitor.stop()
-        serviceWatchdog.notifyServiceStopping()  // 크래시가 아닌 경우에도 watchdog 알림
+        // v1.6
+        audioRouteReceiver.unregister()
+        unregisterComponentCallbacks(stabilityManager)
+        streamingPipeline.clear()
+        adaptiveVAD.logStats()
+        // v1.4 watchdog
+        serviceWatchdog.notifyServiceStopping()
         serviceWatchdog.unregister()
     }
 }
