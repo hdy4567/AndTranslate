@@ -1,0 +1,3 @@
+C:/YOON/CSrepos/AndTrans/AndTranslate/libs/translation/.cxx/Debug/3y525d4s/x86_64/CMakeFiles/argos_jni.dir
+C:/YOON/CSrepos/AndTrans/AndTranslate/libs/translation/.cxx/Debug/3y525d4s/x86_64/CMakeFiles/edit_cache.dir
+C:/YOON/CSrepos/AndTrans/AndTranslate/libs/translation/.cxx/Debug/3y525d4s/x86_64/CMakeFiles/rebuild_cache.dir

@@ -1,0 +1,1 @@
+C:\YOON\CSrepos\AndTrans\AndTranslate\libs\translation\src\main\cpp\CMakeLists.txt

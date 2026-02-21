@@ -1,0 +1,7 @@
+[
+{
+  "directory": "C:/YOON/CSrepos/AndTrans/AndTranslate/libs/translation/.cxx/Debug/3y525d4s/armeabi-v7a",
+  "command": "C:\\YOON\\CSrepos\\AndTrans\\AndTranslate\\TEMP_SDK\\ndk\\25.1.8937393\\toolchains\\llvm\\prebuilt\\windows-x86_64\\bin\\clang++.exe --target=armv7-none-linux-androideabi26 --sysroot=C:/YOON/CSrepos/AndTrans/AndTranslate/TEMP_SDK/ndk/25.1.8937393/toolchains/llvm/prebuilt/windows-x86_64/sysroot -Dargos_jni_EXPORTS -IC:/YOON/CSrepos/AndTrans/AndTranslate/libs/translation/src/main/cpp/include -g -DANDROID -fdata-sections -ffunction-sections -funwind-tables -fstack-protector-strong -no-canonical-prefixes -D_FORTIFY_SOURCE=2 -march=armv7-a -mthumb -Wformat -Werror=format-security   -fno-limit-debug-info  -fPIC -std=gnu++17 -o CMakeFiles\\argos_jni.dir\\argos_translator_jni.cpp.o -c C:\\YOON\\CSrepos\\AndTrans\\AndTranslate\\libs\\translation\\src\\main\\cpp\\argos_translator_jni.cpp",
+  "file": "C:\\YOON\\CSrepos\\AndTrans\\AndTranslate\\libs\\translation\\src\\main\\cpp\\argos_translator_jni.cpp"
+}
+]

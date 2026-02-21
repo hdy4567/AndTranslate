@@ -1,0 +1,5 @@
+# ninja log v5
+1	404	7932992134468319	CMakeFiles/argos_jni.dir/argos_translator_jni.cpp.o	8223572e2c94cf77
+6	642	7932997250535422	C:/YOON/CSrepos/AndTrans/AndTranslate/libs/translation/build/intermediates/cxx/Debug/3y525d4s/obj/arm64-v8a/libargos_jni.so	c4561b8a7a1763a8
+4	1355	7933041115867666	CMakeFiles/argos_jni.dir/argos_translator_jni.cpp.o	981be661673df733
+1356	1499	7933041117387576	C:/YOON/CSrepos/AndTrans/AndTranslate/libs/translation/build/intermediates/cxx/Debug/3y525d4s/obj/arm64-v8a/libargos_jni.so	45051fa796796a91

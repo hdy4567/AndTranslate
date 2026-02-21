@@ -1,0 +1,41 @@
+# Gradle and IDE
+.gradle
+.idea/
+*.iml
+local.properties
+
+# Build directories
+build/
+bin/
+out/
+app/build/
+apps/android/build/
+libs/audio-capture/build/
+libs/stt-engine/build/
+libs/subtitle-renderer/build/
+libs/translation/build/
+libs/privacy/build/
+libs/network/build/
+
+# SDKs and binaries (Custom to this project)
+TEMP_SDK/
+*.apk
+*.aab
+*.exe
+*.dll
+
+# Models
+assets/vosk-model*
+
+# OS specific
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+crash_dump.txt
+crash_log.txt
+stt_logs.txt
+logdump.txt
+logdump_ansi.txt
+recent_crashes.txt

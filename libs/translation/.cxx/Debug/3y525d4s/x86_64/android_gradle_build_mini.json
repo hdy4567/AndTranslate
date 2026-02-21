@@ -1,0 +1,27 @@
+{
+  "buildFiles": [
+    "C:\\YOON\\CSrepos\\AndTrans\\AndTranslate\\libs\\translation\\src\\main\\cpp\\CMakeLists.txt"
+  ],
+  "cleanCommandsComponents": [
+    [
+      "c:\\YOON\\CSrepos\\AndTrans\\AndTranslate\\TEMP_SDK\\cmake\\3.22.1\\bin\\ninja.exe",
+      "-C",
+      "C:\\YOON\\CSrepos\\AndTrans\\AndTranslate\\libs\\translation\\.cxx\\Debug\\3y525d4s\\x86_64",
+      "clean"
+    ]
+  ],
+  "buildTargetsCommandComponents": [
+    "c:\\YOON\\CSrepos\\AndTrans\\AndTranslate\\TEMP_SDK\\cmake\\3.22.1\\bin\\ninja.exe",
+    "-C",
+    "C:\\YOON\\CSrepos\\AndTrans\\AndTranslate\\libs\\translation\\.cxx\\Debug\\3y525d4s\\x86_64",
+    "{LIST_OF_TARGETS_TO_BUILD}"
+  ],
+  "libraries": {
+    "argos_jni::@6890427a1f51a3e7e1df": {
+      "artifactName": "argos_jni",
+      "abi": "x86_64",
+      "output": "C:\\YOON\\CSrepos\\AndTrans\\AndTranslate\\libs\\translation\\build\\intermediates\\cxx\\Debug\\3y525d4s\\obj\\x86_64\\libargos_jni.so",
+      "runtimeFiles": []
+    }
+  }
+}

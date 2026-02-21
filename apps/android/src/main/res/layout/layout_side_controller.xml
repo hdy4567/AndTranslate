@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="wrap_content"
+    android:layout_height="wrap_content"
+    android:clipChildren="false"
+    android:clipToPadding="false">
+
+    <!-- 측면 탭 핸들 (이미지 2번 스타일) -->
+    <FrameLayout
+        android:id="@+id/btn_main_bubble"
+        android:layout_width="32dp"
+        android:layout_height="60dp"
+        android:background="@drawable/bg_side_tab"
+        android:clickable="true"
+        android:focusable="true"
+        android:elevation="8dp">
+
+        <ImageView
+            android:layout_width="24dp"
+            android:layout_height="24dp"
+            android:layout_gravity="center"
+            android:src="@android:drawable/ic_menu_view"
+            android:tint="#FFFFFF" />
+
+    </FrameLayout>
+
+</FrameLayout>

@@ -1,0 +1,38 @@
+{
+  "buildFiles": [
+    "C:\\YOON\\CSrepos\\AndTrans\\AndTranslate\\libs\\translation\\src\\main\\cpp\\CMakeLists.txt"
+  ],
+  "cleanCommandsComponents": [
+    [
+      "c:\\YOON\\CSrepos\\AndTrans\\AndTranslate\\TEMP_SDK\\cmake\\3.22.1\\bin\\ninja.exe",
+      "-C",
+      "C:\\YOON\\CSrepos\\AndTrans\\AndTranslate\\libs\\translation\\.cxx\\Debug\\3y525d4s\\x86_64",
+      "clean"
+    ]
+  ],
+  "buildTargetsCommandComponents": [
+    "c:\\YOON\\CSrepos\\AndTrans\\AndTranslate\\TEMP_SDK\\cmake\\3.22.1\\bin\\ninja.exe",
+    "-C",
+    "C:\\YOON\\CSrepos\\AndTrans\\AndTranslate\\libs\\translation\\.cxx\\Debug\\3y525d4s\\x86_64",
+    "{LIST_OF_TARGETS_TO_BUILD}"
+  ],
+  "libraries": {
+    "argos_jni::@6890427a1f51a3e7e1df": {
+      "toolchain": "toolchain",
+      "abi": "x86_64",
+      "artifactName": "argos_jni",
+      "output": "C:\\YOON\\CSrepos\\AndTrans\\AndTranslate\\libs\\translation\\build\\intermediates\\cxx\\Debug\\3y525d4s\\obj\\x86_64\\libargos_jni.so",
+      "runtimeFiles": []
+    }
+  },
+  "toolchains": {
+    "toolchain": {
+      "cCompilerExecutable": "C:\\YOON\\CSrepos\\AndTrans\\AndTranslate\\TEMP_SDK\\ndk\\25.1.8937393\\toolchains\\llvm\\prebuilt\\windows-x86_64\\bin\\clang.exe",
+      "cppCompilerExecutable": "C:\\YOON\\CSrepos\\AndTrans\\AndTranslate\\TEMP_SDK\\ndk\\25.1.8937393\\toolchains\\llvm\\prebuilt\\windows-x86_64\\bin\\clang++.exe"
+    }
+  },
+  "cFileExtensions": [],
+  "cppFileExtensions": [
+    "cpp"
+  ]
+}

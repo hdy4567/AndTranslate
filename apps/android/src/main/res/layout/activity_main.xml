@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#F5F5F5">
+
+    <LinearLayout
+        android:id="@+id/ll_main_content"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:orientation="vertical"
+        android:gravity="center"
+        android:padding="32dp">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="AndTranslate"
+            android:textSize="32sp"
+            android:textStyle="bold"
+            android:textColor="#2196F3"
+            android:layout_marginBottom="16dp" />
+
+        <TextView
+            android:id="@+id/tv_status"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="서비스 대기 중"
+            android:textSize="18sp"
+            android:layout_marginBottom="40dp" />
+
+        <!-- 클릭 방해를 최소화하기 위해 버튼을 중앙에 크게 배치 -->
+        <com.google.android.material.floatingactionbutton.ExtendedFloatingActionButton
+            android:id="@+id/fab_toggle"
+            android:layout_width="250dp"
+            android:layout_height="80dp"
+            android:text="번역 시작"
+            android:textSize="20sp"
+            android:textColor="#FFFFFF"
+            android:gravity="center"
+            app:backgroundTint="#2196F3"
+            app:icon="@android:drawable/ic_media_play"
+            app:iconTint="#FFFFFF"
+            android:elevation="20dp" />
+
+    </LinearLayout>
+
+    <!-- PIP/Main UI 토글을 위한 그룹 (코드 호환성 유지) -->
+    <androidx.constraintlayout.widget.Group
+        android:id="@+id/group_main_ui"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:visibility="visible" />
+
+    <LinearLayout
+        android:id="@+id/container_pip_ui"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:orientation="vertical"
+        android:background="#000000"
+        android:visibility="gone">
+        <TextView android:id="@+id/tv_pip_subtitle" android:layout_width="match_parent"
+            android:layout_height="wrap_content" android:textColor="#FFFFFF" />
+        <TextView android:id="@+id/tv_pip_translated" android:layout_width="match_parent"
+            android:layout_height="wrap_content" android:textColor="#FFFF00" />
+    </LinearLayout>
+
+</FrameLayout>
