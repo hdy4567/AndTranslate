@@ -71,7 +71,14 @@ class SubtitleCaptureService : Service() {
     // ★ v1.4 Safe Additive 컴포넌트
     private lateinit var audioFocusManager: com.viitor.audio.AudioFocusManager
     private lateinit var serviceWatchdog: com.viitor.audio.ServiceWatchdog
-    private var isCaptureActive = true  // AudioFocus 로스 시 일시정지 플래그
+    private var isCaptureActive = true
+
+    // ★ v1.5 Ultra Upgrade 컴포넌트
+    private val audioEffectsChain = com.viitor.audio.AudioEffectsChain()
+    private val tokenHealingBuffer = com.viitor.stt.WhisperTokenHealingBuffer(overlapSamples = 8000)
+    private val prefixTranslationCache = com.viitor.translate.PrefixTranslationCache(maxEntries = 1000)
+    // LockFreeCircularBuffer 실제 오디오 파이프라인 대체 버퍼
+    private val lockFreeAudioBuf = com.viitor.audio.LockFreeCircularBuffer(capacity = 512)
 
     override fun onCreate() {
         super.onCreate()
@@ -385,7 +392,7 @@ class SubtitleCaptureService : Service() {
                     // ★ v1.4: AudioFocus 로스(전화 수신) 시 스킵
                     if (!isCaptureActive) return@startCapture
                     
-                    // ★ v1.4: DC Offset 제거 + 엸어 ID 사전 감지
+                    // ★ v1.4: DC Offset 제거 + 언어 ID 사전 감지
                     val cleanData = com.viitor.stt.AudioPreprocessor.preprocess(chunk.data)
                     val autoLang = com.viitor.stt.AudioPreprocessor.detectLanguage(cleanData)
                     val processedChunk = if (autoLang != currentLanguage) {
@@ -394,9 +401,17 @@ class SubtitleCaptureService : Service() {
                     } else {
                         chunk.copy(data = cleanData)
                     }
-                    
-                    buffer.writeChunk(processedChunk)
-                    val rms = vad.calculateRMS(processedChunk.data)
+
+                    // ★ v1.5: Pre-emphasis + Hamming Window (JP 자음 고주파 부스트)
+                    val enhancedData = com.viitor.stt.MelSpectrogramEnhancer.enhance(processedChunk.data)
+                    // ★ v1.5: Token Healing - 다음 청크를 위한 오버랩 저장
+                    tokenHealingBuffer.updateOverlap(enhancedData)
+                    val healedChunk = processedChunk.copy(data = enhancedData)
+
+                    buffer.writeChunk(healedChunk)
+                    // ★ v1.5: 락-프리 버퍼에도 병렬 기록 (향후 교체 준비)
+                    lockFreeAudioBuf.write(enhancedData)
+                    val rms = vad.calculateRMS(healedChunk.data)
                     val isVoice = vad.isVoice(rms)
 
                     if (System.currentTimeMillis() % 1000 < 50) {
