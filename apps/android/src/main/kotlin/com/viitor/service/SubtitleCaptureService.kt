@@ -300,7 +300,7 @@ class SubtitleCaptureService : Service() {
             workflowScope?.launch(Dispatchers.IO) {
                 for (renderBase in partialTranslationChannel) {
                     try {
-                        val translated = translator.translate(renderBase.text, "ja", "ko")
+                        val translated = fastNetworkTranslate(renderBase.text) ?: translator.translate(renderBase.text, "ja", "ko")
                         withContext(Dispatchers.Main) {
                             renderer.showProvisional(renderBase.copy(translatedText = translated))
                         }
@@ -398,7 +398,7 @@ class SubtitleCaptureService : Service() {
 
                                     if (isTranslationEnabled) {
                                         val now = System.currentTimeMillis()
-                                        if (now - lastPartialTranslateTime > 400 || base.text.length > lastTranslatedPartialText.length + 2) {
+                                        if (now - lastPartialTranslateTime > 250 || base.text.length > lastTranslatedPartialText.length + 2) {
                                             val textToTranslate = renderBase.text
                                             lastPartialTranslateTime = System.currentTimeMillis()
                                             lastTranslatedPartialText = base.text
@@ -642,14 +642,15 @@ class SubtitleCaptureService : Service() {
 
     // ★ 번역 속도 한계를 극복하기 위한 극비 네트워킹 바이패스 로직 (API 키 없는 무료 우회, 오프라인 전환 가능)
     private suspend fun fastNetworkTranslate(text: String): String? = withContext(Dispatchers.IO) {
+        var connection: java.net.HttpURLConnection? = null
         try {
             val encodedText = java.net.URLEncoder.encode(text, "UTF-8")
             val urlString = "https://translate.googleapis.com/translate_a/single?client=gtx&sl=ja&tl=ko&dt=t&q=$encodedText"
-            val connection = java.net.URL(urlString).openConnection() as java.net.HttpURLConnection
+            connection = java.net.URL(urlString).openConnection() as java.net.HttpURLConnection
             connection.requestMethod = "GET"
             connection.setRequestProperty("User-Agent", "Mozilla/5.0")
-            connection.connectTimeout = 3000
-            connection.readTimeout = 3000
+            connection.connectTimeout = 2500
+            connection.readTimeout = 2500
             
             if (connection.responseCode == 200) {
                 val response = connection.inputStream.bufferedReader().use { it.readText() }
@@ -665,6 +666,8 @@ class SubtitleCaptureService : Service() {
         } catch (e: Exception) {
             // 네트워크 오류 (Timeout 등) 핸들링 - 자막층이 멈추지 않게
             android.util.Log.e("Pipeline", "Fast network translate timeout or error: ${e.message}")
+        } finally {
+            connection?.disconnect()
         }
         return@withContext null
     }
