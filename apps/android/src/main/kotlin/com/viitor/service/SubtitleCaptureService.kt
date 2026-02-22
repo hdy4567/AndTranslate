@@ -291,8 +291,11 @@ class SubtitleCaptureService : Service() {
             var whisperAccumulatedMs = 0L
             val whisperLock = Any() 
 
-            // ★ 오디오 처리 전용 고성능 버퍼 풀 (GC 부하 제로)
-            val sttAudioChannel = kotlinx.coroutines.channels.Channel<com.viitor.audio.domain.AudioChunk>(kotlinx.coroutines.channels.Channel.UNLIMITED)
+            // ★ 오디오 처리 전용 고성능 버퍼 풀 (GC 부하 제로, OOM 방지 버퍼 한계치 설정)
+            val sttAudioChannel = kotlinx.coroutines.channels.Channel<com.viitor.audio.domain.AudioChunk>(
+                capacity = 3000,
+                onBufferOverflow = kotlinx.coroutines.channels.BufferOverflow.DROP_OLDEST
+            )
             
             // ★ 번역 전용 고성능 워커 풀 (CONFLATED 방식: 처리 중 들어온 과거 잔여물 다 무시하고 최신 1개만 남김)
             val partialTranslationChannel = kotlinx.coroutines.channels.Channel<ProvisionalTranscript>(kotlinx.coroutines.channels.Channel.CONFLATED)
@@ -640,34 +643,38 @@ class SubtitleCaptureService : Service() {
         }
     }
 
-    // ★ 번역 속도 한계를 극복하기 위한 극비 네트워킹 바이패스 로직 (API 키 없는 무료 우회, 오프라인 전환 가능)
+    // ★ 번역 속도 한계를 극복하기 위한 극비 네트워킹 바이패스 로직 + 엔터프라이즈 Retry 회복 탄력성
     private suspend fun fastNetworkTranslate(text: String): String? = withContext(Dispatchers.IO) {
-        var connection: java.net.HttpURLConnection? = null
-        try {
-            val encodedText = java.net.URLEncoder.encode(text, "UTF-8")
-            val urlString = "https://translate.googleapis.com/translate_a/single?client=gtx&sl=ja&tl=ko&dt=t&q=$encodedText"
-            connection = java.net.URL(urlString).openConnection() as java.net.HttpURLConnection
-            connection.requestMethod = "GET"
-            connection.setRequestProperty("User-Agent", "Mozilla/5.0")
-            connection.connectTimeout = 2500
-            connection.readTimeout = 2500
-            
-            if (connection.responseCode == 200) {
-                val response = connection.inputStream.bufferedReader().use { it.readText() }
-                val jsonArray = org.json.JSONArray(response)
-                val segments = jsonArray.getJSONArray(0)
-                val sb = StringBuilder()
-                for (i in 0 until segments.length()) {
-                    val segment = segments.getJSONArray(i)
-                    sb.append(segment.getString(0))
+        val maxRetries = 2
+        for (attempt in 0 until maxRetries) {
+            var connection: java.net.HttpURLConnection? = null
+            try {
+                val encodedText = java.net.URLEncoder.encode(text, "UTF-8")
+                val urlString = "https://translate.googleapis.com/translate_a/single?client=gtx&sl=ja&tl=ko&dt=t&q=$encodedText"
+                connection = java.net.URL(urlString).openConnection() as java.net.HttpURLConnection
+                connection.requestMethod = "GET"
+                connection.setRequestProperty("User-Agent", "Mozilla/5.0")
+                connection.connectTimeout = 2500
+                connection.readTimeout = 2500
+                
+                if (connection.responseCode == 200) {
+                    val response = connection.inputStream.bufferedReader().use { it.readText() }
+                    val jsonArray = org.json.JSONArray(response)
+                    val segments = jsonArray.getJSONArray(0)
+                    val sb = StringBuilder()
+                    for (i in 0 until segments.length()) {
+                        val segment = segments.getJSONArray(i)
+                        sb.append(segment.getString(0))
+                    }
+                    return@withContext sb.toString()
                 }
-                return@withContext sb.toString()
+            } catch (e: Exception) {
+                // 네트워크 오류 핸들링 - 자막층이 멈추지 않게
+                android.util.Log.e("Pipeline", "Fast network translate timeout/error on attempt $attempt: ${e.message}")
+                if (attempt < maxRetries - 1) kotlinx.coroutines.delay(100L) // 짧은 대기 후 재시도
+            } finally {
+                connection?.disconnect()
             }
-        } catch (e: Exception) {
-            // 네트워크 오류 (Timeout 등) 핸들링 - 자막층이 멈추지 않게
-            android.util.Log.e("Pipeline", "Fast network translate timeout or error: ${e.message}")
-        } finally {
-            connection?.disconnect()
         }
         return@withContext null
     }
