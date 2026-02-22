@@ -21,7 +21,7 @@ import java.io.File
  */
 class LocalTranslator(private val context: Context) {
 
-    private val dbCache = TranslationCache(20)
+    private val dbCache = TranslationCache(200)
 
     // Native model handles
     private var koEnPtr: Long = 0L
@@ -117,15 +117,16 @@ class LocalTranslator(private val context: Context) {
 
         // 2. Google Translate Free API 호출 (속도 & 정확도 대폭 개선)
         return withContext(Dispatchers.IO) {
+            var connection: java.net.HttpURLConnection? = null
             try {
                 val encodedText = java.net.URLEncoder.encode(text, "UTF-8")
                 val urlString = "https://translate.googleapis.com/translate_a/single?client=gtx&sl=$sourceLang&tl=$targetLang&dt=t&q=$encodedText"
                 val url = java.net.URL(urlString)
-                val connection = url.openConnection() as java.net.HttpURLConnection
+                connection = url.openConnection() as java.net.HttpURLConnection
                 connection.requestMethod = "GET"
                 connection.setRequestProperty("User-Agent", "Mozilla/5.0")
-                connection.connectTimeout = 3000
-                connection.readTimeout = 3000
+                connection.connectTimeout = 2500 // 타임아웃 감소로 프로세스 대기시간 최적화
+                connection.readTimeout = 2500
 
                 if (connection.responseCode == 200) {
                     val response = connection.inputStream.bufferedReader().use { it.readText() }
@@ -147,6 +148,8 @@ class LocalTranslator(private val context: Context) {
             } catch (e: Exception) {
                 Log.e("Translator", "Translation query failed: ${e.message}")
                 text // 실패 시 원문 반환
+            } finally {
+                connection?.disconnect()
             }
         }
     }
