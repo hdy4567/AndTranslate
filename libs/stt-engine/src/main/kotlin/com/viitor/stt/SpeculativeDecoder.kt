@@ -1,6 +1,7 @@
 package com.viitor.stt
 
 import android.util.Log
+import com.viitor.stt.domain.TranscriptionMode
 
 /**
  * ★ SpeculativeDecoder: 2× 속도로 토큰을 추론하는 투-패스 디코더
@@ -26,16 +27,16 @@ class SpeculativeDecoder(
      * 빠른 투기적 디코딩.
      * 내부적으로 draft → verify 반복 루프를 돌아 최종 텍스트 반환.
      */
-    fun decode(audioData: ByteArray, mode: TranscriptionMode, prompt: String): String {
+    fun decode(audioData: ByteArray, mode: com.viitor.stt.domain.TranscriptionMode, prompt: String): String {
         return try {
             // Phase 1: Draft - 빠른 tiny 결과 생성 (provisional)
             val draftResult = draftProcessor.transcribe(
-                audioData, TranscriptionMode.PROVISIONAL, prompt
+                audioData, com.viitor.stt.domain.TranscriptionMode.PROVISIONAL, prompt
             )
             
             // Phase 2: Verify - Final(beam=2) 검증, 일치 시 draft 채택
             val finalResult = targetProcessor.transcribe(
-                audioData, TranscriptionMode.FINAL, "$prompt $draftResult"
+                audioData, com.viitor.stt.domain.TranscriptionMode.FINAL, "$prompt $draftResult"
             )
             
             // Phase 3: Reconcile - 두 결과 비교 후 신뢰도 높은 것 채택

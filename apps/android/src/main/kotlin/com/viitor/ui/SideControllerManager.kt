@@ -100,11 +100,8 @@ class SideControllerManager(private val context: Context) {
             val intent = Intent(context, SubtitleCaptureService::class.java).apply {
                 action = "ACTION_START_RECOGNITION"
             }
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                context.startForegroundService(intent)
-            } else {
-                context.startService(intent)
-            }
+            // ⚡ [OS Stability] 이미 Foreground 상태인 서비스에는 startService만 호출해야 크래시 방지
+            context.startService(intent)
             android.widget.Toast.makeText(context, "자막 캡처 시작", android.widget.Toast.LENGTH_SHORT).show()
         }
     }

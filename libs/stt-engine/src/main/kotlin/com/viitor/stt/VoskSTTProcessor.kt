@@ -11,6 +11,8 @@ import android.util.Log
 class VoskSTTProcessor(private val context: Context) : AutoCloseable {
     private var voskModelInstance: org.vosk.Model? = null
 
+    fun isReady(): Boolean = voskModelInstance != null
+
     /**
      * assets/vosk-model-small-ko-0.22 모델 연결
      */
@@ -18,9 +20,9 @@ class VoskSTTProcessor(private val context: Context) : AutoCloseable {
      * assets/vosk-model-small-ko-0.22 모델 연결
      * - 동기식 로딩 (비동기 콜백 Hell 제거)
      */
-    fun loadModel(language: String = "ko"): Result<Boolean> {
+    fun loadModel(language: String = "ko", onProgress: (String) -> Unit = {}): Result<Boolean> {
         return try {
-            val modelPath = com.viitor.stt.util.VoskModelLoader.loadModel(context, language)
+            val modelPath = com.viitor.stt.util.VoskModelLoader.loadModel(context, language, onProgress)
             if (modelPath != null) {
                 this.voskModelInstance = org.vosk.Model(modelPath)
                 Result.success(true)

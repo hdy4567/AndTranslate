@@ -16,7 +16,7 @@ class FinalTranscribeUseCase(
     private val whisper: WhisperSTTProcessor,
     private val vosk: com.viitor.stt.VoskSTTProcessor? = null
 ) {
-    suspend fun execute(batch: List<AudioChunk>, engineType: String = "WHISPER", prompt: String = ""): BatchTranscript {
+    suspend fun execute(batch: List<AudioChunk>, engineType: String = "WHISPER", prompt: String = "", language: String = "ja"): BatchTranscript {
         require(batch.isNotEmpty()) { "ERR_EMPTY_BATCH" }
 
         // ★ 배치 병합 후 전처리 파이프라인 적용 (DC Offset → Pre-emphasis → Hamming)
@@ -35,7 +35,8 @@ class FinalTranscribeUseCase(
             val resultText = whisper.transcribe(
                 enhancedAudio,
                 mode = TranscriptionMode.FINAL,
-                promptText = prompt
+                promptText = prompt,
+                language = language
             )
             BatchTranscript(
                 text = JapaneseTextNormalizer.normalize(resultText),

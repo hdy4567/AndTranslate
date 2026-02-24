@@ -21,13 +21,13 @@ object JapaneseTextNormalizer {
     private const val TAG = "JPNormalizer"
 
     // 전각 → 반각 변환 맵
-    private val FULLWIDTH_TO_HALFWIDTH = buildMap {
+    private val FULLWIDTH_TO_HALFWIDTH = mutableMapOf<Char, Char>().apply {
         // 숫자 0-9
-        for (i in 0..9) put('\uFF10' + i, '0' + i)
+        for (i in 0..9) put(('\uFF10'.toInt() + i).toChar(), ('0'.toInt() + i).toChar())
         // 대문자 A-Z
-        for (i in 0..25) put('\uFF21' + i, 'A' + i)
+        for (i in 0..25) put(('\uFF21'.toInt() + i).toChar(), ('A'.toInt() + i).toChar())
         // 소문자 a-z
-        for (i in 0..25) put('\uFF41' + i, 'a' + i)
+        for (i in 0..25) put(('\uFF41'.toInt() + i).toChar(), ('a'.toInt() + i).toChar())
         // 특수문자
         put('　', ' ')  // 전각 공백 → 반각 공백
         put('！', '!')

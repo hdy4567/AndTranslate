@@ -115,42 +115,71 @@ class LocalTranslator(private val context: Context) {
         // 1. Cache 조회 (Index Scan)
         dbCache.get(text, sourceLang, targetLang)?.let { return it }
 
-        // 2. Google Translate Free API 호출 (속도 & 정확도 대폭 개선)
+        // ★ 2. 엔터프라이즈급 Concurrent Race (가장 빠른 응답 채택, 대기시간 제로화)
+        // 구글 네트워크 API와 로컬 오프라인 모델을 동시에 출발시켜, 먼저 도착하는 쪽의 결과를 즉시 UI에 반영
         return withContext(Dispatchers.IO) {
-            var connection: java.net.HttpURLConnection? = null
-            try {
-                val encodedText = java.net.URLEncoder.encode(text, "UTF-8")
-                val urlString = "https://translate.googleapis.com/translate_a/single?client=gtx&sl=$sourceLang&tl=$targetLang&dt=t&q=$encodedText"
-                val url = java.net.URL(urlString)
-                connection = url.openConnection() as java.net.HttpURLConnection
-                connection.requestMethod = "GET"
-                connection.setRequestProperty("User-Agent", "Mozilla/5.0")
-                connection.connectTimeout = 2500 // 타임아웃 감소로 프로세스 대기시간 최적화
-                connection.readTimeout = 2500
+            val channel = kotlinx.coroutines.channels.Channel<String?>(2)
 
-                if (connection.responseCode == 200) {
-                    val response = connection.inputStream.bufferedReader().use { it.readText() }
-                    // 파싱: [[["안녕","Hello",...]], ... ]
-                    val jsonArray = org.json.JSONArray(response)
-                    val segments = jsonArray.getJSONArray(0)
-                    val sb = StringBuilder()
-                    for (i in 0 until segments.length()) {
-                        val segment = segments.getJSONArray(i)
-                        sb.append(segment.getString(0))
+            // Worker A: Google Network API
+            launch {
+                var connection: java.net.HttpURLConnection? = null
+                try {
+                    val encodedText = java.net.URLEncoder.encode(text, "UTF-8")
+                    val urlString = "https://translate.googleapis.com/translate_a/single?client=gtx&sl=$sourceLang&tl=$targetLang&dt=t&q=$encodedText"
+                    val url = java.net.URL(urlString)
+                    connection = url.openConnection() as java.net.HttpURLConnection
+                    connection.requestMethod = "GET"
+                    connection.setRequestProperty("User-Agent", "Mozilla/5.0")
+                    connection.connectTimeout = 2500
+                    connection.readTimeout = 2500
+
+                    if (connection.responseCode == 200) {
+                        val response = connection.inputStream.bufferedReader().use { it.readText() }
+                        val jsonArray = org.json.JSONArray(response)
+                        val segments = jsonArray.getJSONArray(0)
+                        val sb = StringBuilder()
+                        for (i in 0 until segments.length()) {
+                            val segment = segments.getJSONArray(i)
+                            sb.append(segment.getString(0))
+                        }
+                        channel.send(sb.toString())
+                    } else {
+                        channel.send(null)
                     }
-                    val result = sb.toString()
-                    dbCache.put(text, sourceLang, targetLang, result)
-                    result
-                } else {
-                    Log.e("Translator", "Google API Error: ${connection.responseCode}")
-                    text
+                } catch (e: Exception) {
+                    channel.send(null)
+                } finally {
+                    connection?.disconnect()
                 }
-            } catch (e: Exception) {
-                Log.e("Translator", "Translation query failed: ${e.message}")
-                text // 실패 시 원문 반환
-            } finally {
-                connection?.disconnect()
             }
+
+            // Worker B: Argos Native Local (Offline Backup)
+            launch {
+                try {
+                    if (sourceLang == "ja" && targetLang == "ko") {
+                        val en = enJaMutex.withLock { if (enJaPtr != 0L) translateNative(enJaPtr, text, "en") else "" }
+                        val ko = koEnMutex.withLock { if (koEnPtr != 0L && en.isNotEmpty()) translateNative(koEnPtr, en, "ko") else "" }
+                        channel.send(if (ko.isNotEmpty()) ko else null)
+                    } else {
+                        channel.send(null)
+                    }
+                } catch (e: Exception) {
+                    channel.send(null)
+                }
+            }
+
+            // Race: 먼저 도착한 정상 결과 획득
+            var result = channel.receive()
+            if (result == null) {
+                // 첫번째 워커가 실패했다면 두번째 워커 결과를 대기
+                result = channel.receive()
+            }
+
+            val finalResult = result ?: text
+            if (finalResult != text) {
+                dbCache.put(text, sourceLang, targetLang, finalResult)
+            }
+            finalResult
         }
     }
 

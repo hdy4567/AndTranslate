@@ -124,6 +124,22 @@ object MelSpectrogramEnhancer {
      * DC Offset 제거는 AudioPreprocessor에서 이미 처리됨.
      */
     fun enhance(pcm16: ByteArray): ByteArray {
-        return applyHammingWindow(applyPreEmphasis(pcm16))
+        // ⚡ [Spectral Sharpening] 0.97 -> 0.985로 상향 조정하여 일본어 '스(Su)', '츠(Tsu)' 등 초고주파 자음 강조
+        // 브라우저 캡처의 16kHz 샘플링 레이트 한계를 보정함.
+        if (pcm16.size < 4) return pcm16
+        val sampleCount = pcm16.size / 2
+        val result = ByteArray(pcm16.size)
+        var prevSample = 0.0f
+        val alpha = 0.985f // 🚀 [Turbo JP Boost]
+
+        for (i in 0 until sampleCount) {
+            val byteIdx = i * 2
+            val sample = ((pcm16[byteIdx + 1].toInt() shl 8) or (pcm16[byteIdx].toInt() and 0xFF)).toShort().toFloat()
+            val filtered = (sample - alpha * prevSample).coerceIn(Short.MIN_VALUE.toFloat(), Short.MAX_VALUE.toFloat()).toInt().toShort()
+            result[byteIdx] = (filtered.toInt() and 0xFF).toByte()
+            result[byteIdx + 1] = ((filtered.toInt() shr 8) and 0xFF).toByte()
+            prevSample = sample
+        }
+        return result
     }
 }

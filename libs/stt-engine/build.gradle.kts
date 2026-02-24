@@ -25,5 +25,6 @@ dependencies {
     implementation(libs.tensorflow.lite)
     implementation(libs.vosk.android)
     implementation(libs.kotlinx.coroutines.core)
+    implementation("com.squareup.okhttp3:okhttp:4.12.0")
     testImplementation("junit:junit:4.13.2")
 }

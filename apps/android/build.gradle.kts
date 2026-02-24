@@ -1,6 +1,7 @@
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
+    alias(libs.plugins.kotlin.ksp)
 }
 
 android {
@@ -46,6 +47,9 @@ android {
     buildFeatures {
         viewBinding = true
     }
+    androidResources {
+        noCompress.add("tflite")
+    }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_1_8
         targetCompatibility = JavaVersion.VERSION_1_8
@@ -70,4 +74,9 @@ dependencies {
     implementation(libs.tensorflow.lite)
     implementation(libs.vosk.android)
     implementation(libs.kotlinx.coroutines.android)
+    
+    // Room
+    implementation(libs.androidx.room.runtime)
+    implementation(libs.androidx.room.ktx)
+    ksp(libs.androidx.room.compiler)
 }

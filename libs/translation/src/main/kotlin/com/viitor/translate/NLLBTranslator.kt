@@ -54,8 +54,8 @@ class NLLBTranslator(private val context: Context) {
             )
             
             val options = Interpreter.Options().apply {
-                numThreads = 4
-                useXNNPACK = true  // ARM NEON SIMD acceleration
+                setNumThreads(4)
+                setUseXNNPACK(true)  // ARM NEON SIMD acceleration
             }
             interpreter = Interpreter(mappedBuffer, options)
             Log.d(TAG, "NLLB-600M model loaded successfully")

@@ -54,6 +54,13 @@ class ThermalMonitor(private val context: Context) {
         Log.w(TAG, "Thermal status changed: ${_thermalLevel.value} (raw=$status, chunkMult=$chunkSizeMultiplier, useServer=$shouldUseServerSTT)")
     }
     
+    fun getThrottlingLevel(): Int = when (_thermalLevel.value) {
+        ThermalLevel.COOL -> 0
+        ThermalLevel.WARM -> 1
+        ThermalLevel.HOT -> 2
+        ThermalLevel.CRITICAL -> 3
+    }
+
     fun start() {
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
             powerManager.addThermalStatusListener(thermalListener)

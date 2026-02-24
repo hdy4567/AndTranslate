@@ -44,6 +44,13 @@
             app:iconTint="#FFFFFF"
             android:elevation="20dp" />
 
+        <Button
+            android:id="@+id/btn_history"
+            android:layout_width="200dp"
+            android:layout_height="wrap_content"
+            android:text="히스토리 보기"
+            android:layout_marginTop="16dp" />
+
     </LinearLayout>
 
     <!-- PIP/Main UI 토글을 위한 그룹 (코드 호환성 유지) -->

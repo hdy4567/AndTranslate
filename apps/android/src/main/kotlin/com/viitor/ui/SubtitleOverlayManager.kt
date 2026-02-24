@@ -46,12 +46,8 @@ class SubtitleOverlayManager(private val context: Context) : ISubtitleOverlay {
             val intent = Intent(context, com.viitor.service.SubtitleCaptureService::class.java).apply {
                 action = "ACTION_STOP"
             }
-            // Service가 이미 실행 중이므로 startService로 Intent 전달 (onStartCommand 호출됨)
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                context.startForegroundService(intent)
-            } else {
-                context.startService(intent)
-            }
+            // ⚡ [OS Stability] 이미 Foreground 상태인 서비스 종료를 위해 startService만 호출
+            context.startService(intent)
         }
 
         settingsBtn.setOnClickListener {
@@ -67,8 +63,8 @@ class SubtitleOverlayManager(private val context: Context) : ISubtitleOverlay {
             if (provisionalBinding == null) {
                 try {
                     provisionalBinding = OverlaySubtitleBinding.inflate(LayoutInflater.from(themeContext))
-                    // 하단 중앙 배치 (이미지 1번 스타일)
-                    val params = createLayoutParams(Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL, 50)
+                    // 하단 중앙 배치 (기존 50 -> 120으로 상향하여 네비게이션바 간섭 차단)
+                    val params = createLayoutParams(Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL, 120)
                     params.flags = params.flags and WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE.inv()
                     
                     setupButtons(provisionalBinding!!.btnClose, provisionalBinding!!.btnSettings)
@@ -79,21 +75,32 @@ class SubtitleOverlayManager(private val context: Context) : ISubtitleOverlay {
             }
             
             provisionalBinding?.apply {
-                // "엔진 초기화 중" 등 특정 텍스트가 오면 로딩 UI(이미지 3번) 보여주기
-                if (segment.originalText.contains("초기화") || segment.originalText.contains("준비")) {
+                val isStatus = segment.originalText.length < 15 && 
+                    (segment.originalText.contains("초기화") || segment.originalText.contains("준비") || segment.originalText.contains("로드"))
+                
+                // ⚡ [지표 4] 실제 자막 내용이 짧더라도 문맥상 의미가 있으면 표시함
+                if (isStatus) {
                     llLoadingContainer.visibility = View.VISIBLE
                     llSubtitleContainer.visibility = View.GONE
                 } else {
                     llLoadingContainer.visibility = View.GONE
                     llSubtitleContainer.visibility = View.VISIBLE
                     
-                    tvSubtitle.text = segment.originalText
+                    if (segment.originalText.isNotBlank()) {
+                        android.util.Log.i("OverlayUI", "[FLOW-CHECK] 6. Final UI Rendering (${segment.originalText.take(30)})")
+                    }
+                    
+                    if (segment.originalText.isNotBlank()) {
+                        android.util.Log.i("OverlayUI", "[FLOW-CHECK] 6. Final UI Rendering (${segment.originalText.take(30)})")
+                        tvSubtitle.text = segment.originalText
+                    }
                     if (segment.translatedText != null) {
                         tvTranslatedSubtitle.text = segment.translatedText
                         tvTranslatedSubtitle.visibility = View.VISIBLE
                     } else {
-                        if (tvTranslatedSubtitle.text.isEmpty()) {
-                            tvTranslatedSubtitle.text = "..."
+                        // ⚡ [Clean-Up] 플레이스홀더 소거
+                        if (tvTranslatedSubtitle.text.contains("[") || tvTranslatedSubtitle.text == "...") {
+                            tvTranslatedSubtitle.text = ""
                         }
                         tvTranslatedSubtitle.visibility = View.VISIBLE
                     }
@@ -104,7 +111,9 @@ class SubtitleOverlayManager(private val context: Context) : ISubtitleOverlay {
 
     override fun replaceWithFinal(segment: SubtitleSegment) {
         mainHandler.post {
-            // provisionalBinding이 이미 하단바 역할을 하므로, 여기서도 동일하게 업데이트
+            if (provisionalBinding == null) {
+                showProvisional(segment)
+            }
             provisionalBinding?.apply {
                 llLoadingContainer.visibility = View.GONE
                 llSubtitleContainer.visibility = View.VISIBLE
@@ -139,6 +148,8 @@ class SubtitleOverlayManager(private val context: Context) : ISubtitleOverlay {
             
             when (event.action) {
                 MotionEvent.ACTION_DOWN -> {
+                    // ⚡ [Watchdog Ping] 사용자가 UI를 조작 중임을 백그라운드 서비스에 알림
+                    context.sendBroadcast(Intent("com.viitor.ACTION_USER_PING").setPackage(context.packageName))
                     initialX = params.x
                     initialY = params.y
                     initialTouchX = event.rawX
@@ -146,6 +157,8 @@ class SubtitleOverlayManager(private val context: Context) : ISubtitleOverlay {
                     true
                 }
                 MotionEvent.ACTION_MOVE -> {
+                    // ⚡ [Watchdog Ping] 사용자가 UI를 조작 중임을 백그라운드 서비스에 알림
+                    context.sendBroadcast(Intent("com.viitor.ACTION_USER_PING").setPackage(context.packageName))
                     params.x = initialX + (event.rawX - initialTouchX).toInt()
                     params.y = initialY + (event.rawY - initialTouchY).toInt()
                     windowManager.updateViewLayout(view, params)

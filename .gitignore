@@ -3,6 +3,7 @@
 .idea/
 *.iml
 local.properties
+SafeSdkLink/
 
 # Build directories
 build/

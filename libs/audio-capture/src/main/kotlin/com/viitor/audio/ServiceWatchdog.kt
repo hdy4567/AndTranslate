@@ -27,7 +27,9 @@ class ServiceWatchdog(private val context: Context) {
             if (intent.action == ACTION_RESTART) {
                 Log.w(TAG, "Watchdog triggered: restarting SubtitleCaptureService")
                 try {
-                    val serviceIntent = Intent(ctx, com.viitor.service.SubtitleCaptureService::class.java)
+                    val serviceIntent = Intent().apply {
+                        setClassName(ctx, "com.viitor.service.SubtitleCaptureService")
+                    }
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                         ctx.startForegroundService(serviceIntent)
                     } else {

@@ -74,6 +74,10 @@ class MainActivity : AppCompatActivity() {
             }
         }
         
+        binding.btnHistory.setOnClickListener {
+            startActivity(Intent(this, SubtitleHistoryActivity::class.java))
+        }
+        
         checkServiceStatus()
     }
     

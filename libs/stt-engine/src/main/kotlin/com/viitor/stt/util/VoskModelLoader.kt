@@ -23,7 +23,7 @@ object VoskModelLoader {
     /**
      * 모델 경로를 반환. 없으면 assets에서 복사 후 반환.
      */
-    fun loadModel(context: Context, language: String = "ko"): String? {
+    fun loadModel(context: Context, language: String = "ko", onProgress: (String) -> Unit = {}): String? {
         val name = modelName(language)
         val modelDir = File(context.getExternalFilesDir(null), name)
 
@@ -36,11 +36,13 @@ object VoskModelLoader {
         val assetList = context.assets.list("") ?: emptyArray()
         val assetDir = if (assetList.contains(name)) name else modelName("ko")
         Log.d(TAG, "Extracting model from assets/$assetDir ...")
+        onProgress("Vosk 모델 압축 해제 중 (약 20초 소요)...")
 
         return try {
             copyAssetFolder(context, assetDir, modelDir)
             if (modelDir.exists() && modelDir.list()?.isNotEmpty() == true) {
                 Log.d(TAG, "Extraction complete: ${modelDir.absolutePath}")
+                onProgress("Vosk 모델 준비 완료.")
                 modelDir.absolutePath
             } else {
                 Log.e(TAG, "Extraction succeeded but directory is empty")

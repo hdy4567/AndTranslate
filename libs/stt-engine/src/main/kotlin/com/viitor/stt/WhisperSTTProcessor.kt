@@ -1,8 +1,9 @@
-package com.viitor.stt
+﻿package com.viitor.stt
 
 import android.content.Context
 import android.util.Log
 import com.viitor.stt.domain.TranscriptionMode
+import com.viitor.stt.util.SubtitleForensicAgent
 import org.tensorflow.lite.Interpreter
 import java.io.FileInputStream
 import java.nio.ByteBuffer
@@ -12,355 +13,192 @@ import java.nio.channels.FileChannel
 import kotlin.math.*
 
 /**
- * ★ WhisperSTTProcessor: Whisper Tiny TFLite 완전 구현
- *
- * 파이프라인:
- *   PCM16 ByteArray
- *     → normalizedFloat ([-1,1])
- *     → Log-Mel Spectrogram [1, N_MELS=80, N_FRAMES=3000]
- *     → TFLite Interpreter (whisper-tiny.tflite)
- *     → Token IDs (greedy decode)
- *     → UTF-8 텍스트
+ * ★ WhisperSTTProcessor: Enterprise Grade Whisper Tiny Implementation
+ *  - High-precision Mel Spectrogram with Hanning Window
+ *  - Thread-safe Inference Engine
+ *  - Self-Monitoring & Forensic Pipeline
  */
 class WhisperSTTProcessor(private val context: Context) : AutoCloseable {
 
     companion object {
         private const val TAG = "WhisperSTT"
-
-        // ── 오디오 파라미터 ───────────────────────────────────
-        private const val SAMPLE_RATE   = 16000
-        private const val N_FFT         = 400        // 25ms window
-        private const val HOP_LENGTH    = 160        // 10ms hop
-        private const val N_MELS        = 80
-        private const val N_FRAMES      = 3000       // 30초 분량
-        private const val MAX_SAMPLES   = SAMPLE_RATE * 30  // 480,000 samples
-
-        // ── Whisper 특수 토큰 ─────────────────────────────────
-        private const val TOKEN_SOT           = 50258  // startoftranscript
-        private const val TOKEN_KOREAN        = 50264  // ko
-        private const val TOKEN_TRANSCRIBE    = 50359  // transcribe
-        private const val TOKEN_NO_TIMESTAMPS = 50363  // notimestamps
-        private const val TOKEN_EOT           = 50257  // eot (end of text)
-        private const val VOCAB_SIZE          = 51865
-
-        // ── Mel 필터뱅크 파라미터 ─────────────────────────────
-        private const val F_MIN = 0.0
-        private const val F_MAX = 8000.0
-
-        // 기본 반환: 모델 미로드 또는 무음 구간
-        private const val RESULT_NOT_READY = ""
+        private const val SAMPLE_RATE = 16000
+        private const val N_MELS = 80
+        private const val N_FRAMES = 3000
+        private const val N_FFT = 400
+        private const val HOP_LENGTH = 160
+        private const val VOCAB_SIZE = 51865
+        private const val RESULT_NOT_READY = "[NOT_READY]"
     }
 
     private var interpreter: Interpreter? = null
+    private var isPunctured = false
 
-    // 한 번 계산한 Mel 필터뱅크 캐시
-    private val melFilterbank: Array<FloatArray> by lazy { buildMelFilterbank() }
+    private val melFilterbank: Array<FloatArray> by lazy {
+        initMelFilterbank(SAMPLE_RATE, N_FFT, N_MELS)
+    }
 
-    // ─────────────────────────────────────────────────────────────────────────
-    // 모델 로드
-    // ─────────────────────────────────────────────────────────────────────────
-
-    @Throws(Exception::class)
-    fun loadModel(language: String): Result<Unit> {
-        val modelFile = "whisper-tiny.tflite"
+    fun loadModel(modelFile: String, language: String = "ja"): Result<Unit> {
         return try {
-            val buf = loadModelFile(modelFile)
+            WhisperVocabulary.init(context)
+            val fd = context.assets.openFd(modelFile)
+            val fis = FileInputStream(fd.fileDescriptor)
+            val buf = fis.channel.map(FileChannel.MapMode.READ_ONLY, fd.startOffset, fd.declaredLength)
             val options = Interpreter.Options().apply {
-                numThreads = 4
+                setNumThreads(2)
+                setUseXNNPACK(true)
             }
             interpreter = Interpreter(buf, options)
-            Log.d(TAG, "Model loaded: $modelFile  (lang=$language)")
-            Log.d(TAG, "  Input tensors : ${interpreter!!.inputTensorCount}")
-            Log.d(TAG, "  Output tensors: ${interpreter!!.outputTensorCount}")
-            logTensorShapes()
+            Log.d(TAG, "Model loaded: $modelFile")
             Result.success(Unit)
         } catch (e: Exception) {
-            Log.e(TAG, "Model load failed: ${e.message}", e)
+            Log.e(TAG, "Load failure: ${e.message}")
             Result.failure(e)
         }
     }
 
-    private fun loadModelFile(fileName: String): MappedByteBuffer {
-        context.assets.openFd(fileName).use { fd ->
-            FileInputStream(fd.fileDescriptor).use { fis ->
-                return fis.channel.map(
-                    FileChannel.MapMode.READ_ONLY,
-                    fd.startOffset,
-                    fd.declaredLength
-                )
-            }
-        }
-    }
+    private val inferenceLock = java.util.concurrent.locks.ReentrantLock()
+    private var cachedMelBuf: ByteBuffer? = null
 
-    private fun logTensorShapes() {
-        val interp = interpreter ?: return
+    fun transcribe(audioData: ByteArray, mode: TranscriptionMode, promptText: String = "", language: String = "ja"): String {
+        if (SubtitleForensicAgent.isPunished) {
+            return "[WHISPER-PUNISHED:ENGINE-STALL]"
+        }
+
+        val interp = interpreter ?: return RESULT_NOT_READY
+        
+        if (!inferenceLock.tryLock(5000, java.util.concurrent.TimeUnit.MILLISECONDS)) return RESULT_NOT_READY
+
         try {
-            for (i in 0 until interp.inputTensorCount) {
-                val t = interp.getInputTensor(i)
-                Log.d(TAG, "  Input[$i]: shape=${t.shape().toList()}  dtype=${t.dataType()}")
-            }
-            for (i in 0 until interp.outputTensorCount) {
-                val t = interp.getOutputTensor(i)
-                Log.d(TAG, "  Output[$i]: shape=${t.shape().toList()}  dtype=${t.dataType()}")
-            }
-        } catch (e: Exception) {
-            Log.w(TAG, "Could not log tensor shapes: ${e.message}")
-        }
-    }
-
-    // ─────────────────────────────────────────────────────────────────────────
-    // 추론 진입점
-    // ─────────────────────────────────────────────────────────────────────────
-
-    /**
-     * PCM16 ByteArray → 텍스트
-     *
-     * @param audioData  PCM 16bit little-endian
-     * @param mode       PROVISIONAL(빠름) / FINAL(정확)
-     */
-    fun transcribe(audioData: ByteArray, mode: TranscriptionMode, promptText: String = ""): String {
-        val interp = interpreter ?: run {
-            Log.w(TAG, "Interpreter not ready")
-            return RESULT_NOT_READY
-        }
-        return try {
             val samples = pcm16ToFloat(audioData)
-            if (samples.isEmpty()) return RESULT_NOT_READY
+            if (samples.isEmpty()) return ""
+            
+            val (mel, activeFrames) = computeLogMelSpectrogramWithMeta(samples)
+            if (activeFrames <= 0) return ""
 
-            val mel = computeLogMelSpectrogram(samples)
-
-            // promptText를 이용한 문맥 유지 (TFLite 수준에서 지원하는 경우)
-            val tokens = runInference(interp, mel, mode, promptText)
-
-            val text = decodeTokens(tokens)
-            Log.d(TAG, "[$mode] (prompt: $promptText) → \"$text\"")
-            text
-        } catch (e: Exception) {
-            Log.e(TAG, "Transcription error: ${e.message}", e)
-            RESULT_NOT_READY
-        }
-    }
-
-    private fun runInference(
-        interp: Interpreter,
-        mel: FloatArray,
-        mode: TranscriptionMode,
-        promptText: String
-    ): IntArray {
-        return try {
-            when (interp.inputTensorCount) {
-                1    -> runEncoderOnly(interp, mel)
-                else -> runEncoderDecoder(interp, mel, mode, promptText)
+            val tokens = runInference(interp, mel, 448)
+            val decoded = WhisperVocabulary.decode(tokens)
+            
+            if (decoded.isNotBlank()) {
+                if (!isPunctured) {
+                    isPunctured = true
+                    Log.i(TAG, "[Engine-Puncture] SUCCESS! Data flowing.")
+                }
             }
+            SubtitleForensicAgent.recordInference(mode, tokens, decoded)
+            return decoded
         } catch (e: Exception) {
-            Log.w(TAG, "Inference failed (${e.message}), returning empty")
-            IntArray(0)
+            Log.e(TAG, "Transcribe crash: ${e.message}")
+            return ""
+        } finally {
+            inferenceLock.unlock()
         }
     }
 
-    /**
-     * Encoder-Decoder 시그니처:
-     *   Input[0]: [1, N_MELS, N_FRAMES] mel
-     *   Input[1]: [1, maxLen]           decoder token ids
-     *   Output[0]: [1, maxLen, vocab]   logits
-     */
-    private fun runEncoderDecoder(
-        interp: Interpreter,
-        mel: FloatArray,
-        mode: TranscriptionMode,
-        promptText: String
-    ): IntArray {
-        val maxLen = if (mode == TranscriptionMode.PROVISIONAL) 64 else 224
+    private fun pcm16ToFloat(audioData: ByteArray): FloatArray {
+        val samples = FloatArray(audioData.size / 2)
+        for (i in samples.indices) {
+            val s = (audioData[i * 2].toInt() and 0xFF) or (audioData[i * 2 + 1].toInt() shl 8)
+            samples[i] = s.toFloat() / 32768.0f
+        }
+        return samples
+    }
 
-        // ★ 엔터프라이즈급 컨텍스트 프롬프팅 (Context Prompting)
-        // 이전 문장의 텍스트를 토큰화하여 디코더의 시작 부분에 주입함으로써 용어 및 문맥 인식률 극대화
-        val promptTokens = mutableListOf(
-            TOKEN_SOT,
-            TOKEN_KOREAN, // 기본 한국어 (필요시 일본어 자동 감지나 설정 연동 가능)
-            TOKEN_TRANSCRIBE,
-            TOKEN_NO_TIMESTAMPS
-        )
+    private fun computeLogMelSpectrogramWithMeta(samples: FloatArray): Pair<FloatArray, Int> {
+        val mel = FloatArray(N_MELS * N_FRAMES)
+        val frames = min(N_FRAMES, (samples.size - N_FFT) / HOP_LENGTH + 1)
+        if (frames <= 0) return Pair(mel, 0)
+
+        val fftSize = N_FFT / 2 + 1
+        val window = FloatArray(N_FFT) { i ->
+            (0.5f * (1 - cos(2 * PI * i / N_FFT))).toFloat()
+        }
+
+        for (i in 0 until frames) {
+            val offset = i * HOP_LENGTH
+            val frame = FloatArray(N_FFT) { j ->
+                if (offset + j < samples.size) samples[offset + j] * window[j] else 0f
+            }
+            
+            val (real, imag) = fft(frame)
+            val power = FloatArray(fftSize) { j ->
+                real[j] * real[j] + imag[j] * imag[j]
+            }
+
+            for (m in 0 until N_MELS) {
+                var energy = 0f
+                for (j in 0 until fftSize) {
+                    energy += power[j] * melFilterbank[m][j]
+                }
+                val logMel = ln(max(energy, 1e-10f))
+                mel[m * N_FRAMES + i] = logMel
+            }
+        }
+        return Pair(mel, frames)
+    }
+
+    private fun fft(input: FloatArray): Pair<FloatArray, FloatArray> {
+        val n = input.size
+        val real = FloatArray(n)
+        val imag = FloatArray(n)
+        for (k in 0 until n) {
+            var r = 0f
+            var im = 0f
+            for (i in 0 until n) {
+                val angle = (2 * PI * k * i / n)
+                r += (input[i] * cos(angle)).toFloat()
+                im -= (input[i] * sin(angle)).toFloat()
+            }
+            real[k] = r
+            imag[k] = im
+        }
+        return Pair(real, imag)
+    }
+
+    private fun initMelFilterbank(sampleRate: Int, nFft: Int, nMels: Int): Array<FloatArray> {
+        val minFreq = 0.0
+        val maxFreq = sampleRate / 2.0
+        val minMel = freqToMel(minFreq)
+        val maxMel = freqToMel(maxFreq)
         
-        // 간단한 텍스트 -> 토큰 인코더 (Byte-level BPE 우회)
-        if (promptText.isNotBlank()) {
-            val promptBytes = promptText.toByteArray(Charsets.UTF_8)
-            // 너무 긴 프롬프트는 오히려 방해되므로 마지막 20바이트만 사용
-            val startIdx = maxOf(0, promptBytes.size - 20)
-            for (i in startIdx until promptBytes.size) {
-                // Whisper byte-level BPE: 0~255 바이트는 특정 오프셋(보통 0)으로 매핑
-                promptTokens.add(promptBytes[i].toInt() and 0xFF)
-            }
-        }
-
-        val tokenIds = IntArray(maxLen) { 0 }
-        for (i in 0 until minOf(maxLen, promptTokens.size)) {
-            tokenIds[i] = promptTokens[i]
-        }
-
-        val melBuf = getMelBuf()
-        melBuf.clear()
-        for (v in mel) melBuf.putFloat(v)
-        melBuf.rewind()
-
-        val outputBuf = getOutputBuf(maxLen)
-
-        val result = mutableListOf<Int>()
-        var pos = promptTokens.size
-
-        while (pos < maxLen) {
-            val tokenBuf = getTokenBuf(maxLen)
-            tokenBuf.clear()
-            for (id in tokenIds) tokenBuf.putInt(id)
-            tokenBuf.rewind()
-
-            outputBuf.clear()
-            val inputs = arrayOf<Any>(melBuf, tokenBuf)
-            val outputs = mutableMapOf<Int, Any>(0 to outputBuf)
-            try {
-                val startMs = System.currentTimeMillis()
-                interp.runForMultipleInputsOutputs(inputs, outputs)
-                val duration = System.currentTimeMillis() - startMs
-                if (pos % 10 == 0 || duration > 1000) {
-                    Log.d(TAG, "Inference step $pos took $duration ms")
-                }
-            } catch (e: Exception) {
-                Log.e(TAG, "Inference loop error at pos $pos: ${e.message}")
-                break
-            }
-            outputBuf.rewind()
-
-            val offset = pos * VOCAB_SIZE
-            // Skip buffer to pos
-            if (outputBuf.remaining() < (offset + VOCAB_SIZE) * 4) {
-                 Log.e(TAG, "Output buffer underflow at pos $pos")
-                 break
-            }
-            outputBuf.position(offset * 4)
-
-            // ★ Beam Search (beamSize=2): Final 모드에서는 상위 2개 토큰을 평가한 후 더 높은 확률의 토큰 만 선택.
-            // Provisional 모드는 속도를 위해 기존 greedy 유지.
-            val nextToken = if (mode == TranscriptionMode.FINAL) {
-                // 상위 2개 토큰 수집
-                outputBuf.rewind()
-                outputBuf.position(offset * 4)
-                var top1Val = Float.NEGATIVE_INFINITY
-                var top2Val = Float.NEGATIVE_INFINITY
-                var top1Tok = TOKEN_EOT
-                var top2Tok = TOKEN_EOT
-                for (i in 0 until VOCAB_SIZE) {
-                    val v = outputBuf.float
-                    if (v > top1Val) { top2Val = top1Val; top2Tok = top1Tok; top1Val = v; top1Tok = i }
-                    else if (v > top2Val) { top2Val = v; top2Tok = i }
-                }
-                // 한국어/일본어 토큰 우선: 영어 토큰보다 첫번째 토큰 선택
-                top1Tok
-            } else {
-                // Provisional: 속도 우선 greedy
-                maxVal
-                nextToken
-            }
-            if (nextToken == TOKEN_EOT || nextToken == TOKEN_SOT) break
-            result.add(nextToken)
-            tokenIds[pos] = nextToken
-            pos++
-            
-            // ★ Provisional 조기 종료 (Early Exit): 10토큰 내외에서 빠른 결과 반환
-            if (mode == TranscriptionMode.PROVISIONAL && result.size > 15) break
-            
-            melBuf.rewind()
-        }
-
-        return result.toIntArray()
-    }
-
-    /**
-     * Encoder-only 모델의 3D logits [1, seqLen, vocabSize] → argmax per position
-     */
-    private fun greedyDecode(logits: FloatArray, shape: IntArray): IntArray {
-        // shape: [1, seqLen, vocab] or [1, vocab]
-        if (shape.size < 3) {
-            // 단순 argmax
-            val best = logits.indices.maxByOrNull { logits[it] } ?: return IntArray(0)
-            return intArrayOf(best)
-        }
-        val seqLen = shape[1]
-        val vocab  = shape[2]
-        val tokens = IntArray(seqLen)
-        for (t in 0 until seqLen) {
-            var best = 0
-            var bestVal = Float.NEGATIVE_INFINITY
-            for (v in 0 until vocab) {
-                val idx = t * vocab + v
-                if (idx < logits.size && logits[idx] > bestVal) {
-                    bestVal = logits[idx]
-                    best = v
-                }
-            }
-            tokens[t] = best
-            if (best == TOKEN_EOT) return tokens.sliceArray(0 until t)
-        }
-        return tokens
-    }
-
-    // ─────────────────────────────────────────────────────────────────────────
-    // 토큰 → 텍스트 디코딩
-    // ─────────────────────────────────────────────────────────────────────────
-
-    /**
-     * Whisper의 Tiktoken-based BPE 어휘는 기기 내 vocab 파일 없이 완전 구현이
-     * 불가능합니다. 여기서는 아래 전략을 사용합니다:
-     *
-     * 1. 0~255 범위: Latin-1 직접 매핑 (ASCII 영어)
-     * 2. 256~50256: BPE 합성 토큰 — 바이트 기반 문자 재조합
-     *    (Whisper byte-level BPE는 토큰이 UTF-8 바이트의 조합이므로
-     *     byte sequence를 모아 String으로 디코딩)
-     * 3. 50257+ : 특수 토큰 — 무시
-     *
-     * 완전한 구현을 위해서는 assets에 vocab.json을 포함해야 하나,
-     * 현재는 Vosk가 primary이므로 Whisper 텍스트는 보조적입니다.
-     */
-    internal fun decodeTokens(tokens: IntArray): String {
-        val bytes = mutableListOf<Byte>()
-        for (token in tokens) {
-            when {
-                token < 0 -> continue
-                token >= 50257 -> continue // 특수 토큰 무시
-                
-                // Whisper byte-level BPE: 
-                // 0~255는 직접적인 byte 매핑입니다.
-                // 256~50256 사이의 토큰들은 문자열이나 바이트의 조합입니다.
-                // tflite-tiny 모델의 경우 보통 vocab이 바이트 단위로 구성되므로
-                // 각 토큰에서 하위 8비트를 추출하여 바이트 시퀀스를 복원합니다.
-                else -> {
-                    // 실제 Whisper 디코더는 복잡한 머지 테이블을 갖지만, 
-                    // TFLite 임베디드 환경에서는 토큰 아이디 자체가 바이트 시퀀스를 
-                    // 인코딩하는 경우가 많습니다. (특히 UTF-8 도메인에서)
-                    val b = token % 256
-                    bytes.add(b.toByte())
-                }
-            }
+        val melPts = DoubleArray(nMels + 2) { i ->
+            melToFreq(minMel + i * (maxMel - minMel) / (nMels + 1))
         }
         
-        return if (bytes.isEmpty()) "" else {
-            try {
-                // 바이트 시퀀스를 UTF-8로 변환하여 깨진 한글/일어 복구
-                val decoded = String(bytes.toByteArray(), Charsets.UTF_8)
-                decoded.trim()
-                    .filter { it.isLetterOrDigit() || it.isWhitespace() || it in ".,!?한-힣ぁ-ヿ一-鿿" }
-            } catch (e: Exception) {
-                Log.e(TAG, "Decoding failure: ${e.message}")
-                ""
+        val binPts = IntArray(nMels + 2) { i ->
+            (floor((nFft + 1) * melPts[i] / sampleRate)).toInt()
+        }
+        
+        val filterbank = Array(nMels) { i ->
+            FloatArray(nFft / 2 + 1) { j ->
+                val f = j
+                when {
+                    f < binPts[i] -> 0f
+                    f <= binPts[i+1] -> (f - binPts[i]).toFloat() / (binPts[i+1] - binPts[i])
+                    f <= binPts[i+2] -> (binPts[i+2] - f).toFloat() / (binPts[i+2] - binPts[i+1])
+                    else -> 0f
+                }
             }
         }
+        return filterbank
     }
 
-    // ─────────────────────────────────────────────────────────────────────────
-    // AutoCloseable
-    // ─────────────────────────────────────────────────────────────────────────
+    private fun freqToMel(f: Double): Double = 2595.0 * log10(1.0 + f / 700.0)
+    private fun melToFreq(m: Double): Double = 700.0 * (10.0.pow(m / 2595.0) - 1.0)
 
-    override fun close() {
-        interpreter?.close()
-        interpreter = null
-        Log.d(TAG, "Interpreter closed")
+    private fun runInference(interp: Interpreter, mel: FloatArray, maxLen: Int): IntArray {
+        val input = getMelBuf().apply { rewind(); asFloatBuffer().put(mel) }
+        val outputBuf = ByteBuffer.allocateDirect(maxLen * 4).order(ByteOrder.nativeOrder())
+        interp.runForMultipleInputsOutputs(arrayOf(input), mapOf(0 to outputBuf))
+        val output = IntArray(maxLen)
+        outputBuf.rewind(); outputBuf.asIntBuffer().get(output)
+        return output
     }
+
+    private fun getMelBuf(): ByteBuffer {
+        return cachedMelBuf ?: ByteBuffer.allocateDirect(N_MELS * N_FRAMES * 4).order(ByteOrder.nativeOrder()).also { cachedMelBuf = it }
+    }
+
+    override fun close() { interpreter?.close() }
+    fun isReady(): Boolean = interpreter != null
 }

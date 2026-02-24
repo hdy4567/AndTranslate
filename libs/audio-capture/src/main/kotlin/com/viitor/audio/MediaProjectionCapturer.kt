@@ -49,6 +49,15 @@ class MediaProjectionCapturer(
                 return
             }
 
+            // ★ [엔터프라이즈] OS 레벨 프로세스 킬(Kill) 데드락 회피 (배터리 방전 및 크래시 원천 차단)
+            projection?.registerCallback(object : MediaProjection.Callback() {
+                override fun onStop() {
+                    android.util.Log.e("AudioCapture", "OS forcefully stopped MediaProjection! Releasing resources...")
+                    onError("OS_MEDIA_PROJECTION_STOPPED")
+                    close()
+                }
+            }, null)
+
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                 val minBuf = AudioRecord.getMinBufferSize(sampleRate, channelConfig, audioFormat)
                 if (minBuf <= 0) {
@@ -127,22 +136,26 @@ class MediaProjectionCapturer(
                         poolIndex = (poolIndex + 1) % poolSize
                         
                         val read = currentRecord.read(buffer, 0, bytesToRead)
-                        if (read > 0) {
-                            val chunkData = buffer.copyOfRange(0, read) // For safety downstream, or just pass length
+                        if (read >= 0) { // ⚡ [Heartbeat Fix] 0바이트여도(무음) 파이프라인 유지를 위해 송출
+                            val actualRead = if (read == 0) bytesToRead else read
+                            if (read == 0) java.util.Arrays.fill(buffer, 0.toByte()) // 무음 데이터 채우기
+                            
+                            val chunkData = buffer.copyOfRange(0, actualRead)
                             
                             val now = System.currentTimeMillis()
                             if (now - lastLogTime > 500) {
                                 var sum = 0.0
-                                for (i in 0 until read step 2) {
+                                for (i in 0 until actualRead step 2) {
                                     val sample = ((buffer[i+1].toInt() shl 8) or (buffer[i].toInt() and 0xFF)).toShort()
                                     sum += sample * sample
                                 }
-                                val rms = kotlin.math.sqrt(sum / (read / 2))
-                                android.util.Log.v("AudioCapture", "Captured: $read bytes, RMS: ${java.lang.String.format("%.2f", rms)}")
+                                val rms = kotlin.math.sqrt(sum / (actualRead / 2))
+                                val visual = if (rms > 50) "🎙️" else "🤫"
+                                android.util.Log.v("AudioCapture", "$visual Captured: $actualRead bytes (Mock: ${read==0}), RMS: ${java.lang.String.format("%.2f", rms)}")
                                 lastLogTime = now
                             }
 
-                            val actualDurationMs = (read.toLong() * 1000L) / (sampleRate * 2)
+                            val actualDurationMs = (actualRead.toLong() * 1000L) / (sampleRate * 2)
                             onChunk(AudioChunk(chunkData, actualDurationMs))
                         } else if (read < 0) {
                             if (isCapturing) onError("ERR_READ_FAILED ($read)")
