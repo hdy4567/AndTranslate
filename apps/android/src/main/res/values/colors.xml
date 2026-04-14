@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- [Plasma Cotton Candy] High-Energy Palette -->
+    <color name="colorPrimary">#00E5FF</color> <!-- Electric Cyan -->
+    <color name="colorPrimaryDark">#00B8D4</color>
+    <color name="colorAccent">#FF4081</color> <!-- Neon Magenta -->
+    
+    <color name="white">#FFFFFF</color>
+    <color name="black">#212121</color>
+    <color name="glass_bg">#80FFFFFF</color>
+</resources>

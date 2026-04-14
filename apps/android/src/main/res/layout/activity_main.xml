@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#121212">
+
+    <!-- 프래그먼트를 렌더링할 메인 컨테이너 -->
+    <androidx.fragment.app.FragmentContainerView
+        android:id="@+id/main_nav_container"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintBottom_toTopOf="@id/bottom_nav_view" />
+
+    <!-- 4탭 브라우징을 위한 바텀 네비게이션 (Aura Capsule UI) -->
+    <com.google.android.material.bottomnavigation.BottomNavigationView
+        android:id="@+id/bottom_nav_view"
+        android:layout_width="match_parent"
+        android:layout_height="72dp"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:menu="@menu/bottom_nav_menu"
+        app:itemIconTint="@color/bnv_color_selector"
+        app:itemTextColor="@color/bnv_color_selector"
+        app:itemRippleColor="#33FF4081"
+        app:labelVisibilityMode="labeled"
+        android:background="#1E1E1E" />
+
+</androidx.constraintlayout.widget.ConstraintLayout>

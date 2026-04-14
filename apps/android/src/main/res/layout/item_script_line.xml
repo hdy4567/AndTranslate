@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.constraintlayout.widget.ConstraintLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:layout_marginBottom="12dp"
+    android:padding="12dp"
+    android:background="#252525">
+
+    <!-- [PREMIUM-ACCENT-HULL] -->
+    <LinearLayout
+        android:id="@+id/ll_sentence_section"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="top"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent">
+
+        <!-- [PREMIUM-ACCENT-BAR] 70dp 울트라-롱 바 (Darker Gray) -->
+        <View
+            android:id="@+id/v_item_bullet"
+            android:layout_width="4dp"
+            android:layout_height="68dp"
+            android:background="#666666"
+            android:layout_marginEnd="12dp" />
+
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:orientation="vertical">
+
+            <TextView
+                android:id="@+id/tv_item_time"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="00:00"
+                android:textColor="#FF4081"
+                android:textSize="10sp"
+                android:textStyle="bold"
+                android:layout_marginBottom="2dp" />
+
+            <!-- 일본어 형태소 칩 영역 -->
+            <com.google.android.flexbox.FlexboxLayout
+                android:id="@+id/flex_item_jp"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                app:flexWrap="wrap" />
+
+            <!-- 한국어 번역 내용 -->
+            <TextView
+                android:id="@+id/tv_item_ko"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:textColor="#888888"
+                android:textSize="13sp"
+                android:layout_marginTop="6dp" />
+        </LinearLayout>
+    </LinearLayout>
+
+</androidx.constraintlayout.widget.ConstraintLayout>

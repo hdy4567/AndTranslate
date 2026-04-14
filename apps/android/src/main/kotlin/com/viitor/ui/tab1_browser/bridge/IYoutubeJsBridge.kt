@@ -1,0 +1,15 @@
+package com.viitor.ui.tab1_browser.bridge
+
+import android.webkit.JavascriptInterface
+
+interface IYoutubeJsBridge {
+    @JavascriptInterface
+    fun onSubtitleExtracted(jsonPayload: String)
+
+    @JavascriptInterface
+    fun onSubtitleExtractedChunked(chunk: String, index: Int, total: Int)
+
+    @JavascriptInterface
+    fun onTimeUpdate(timeMs: Long)
+}
+
