@@ -8,7 +8,60 @@ object YoutubeHijackEngine {
     
     val PLATINUM_VOD_SCRIPT = """
         javascript:(function() {
-            // 湲곗〈 ?붿쭊???뚭퀬 ?덉쑝硫?以묐났 ?ㅽ뻾?섏? ?딅룄濡??뚭눼 ???앹꽦
+            // [V5-NETWORK-SNIFFER] 1. 유튜브 전체 대본 가로채기 (Fetch & XHR Intercept)
+            if (!window.andTransNetworkSnifferInstalled) {
+                window.andTransNetworkSnifferInstalled = true;
+                
+                const originalFetch = window.fetch;
+                window.fetch = async function() {
+                    const url = arguments[0];
+                    const response = await originalFetch.apply(this, arguments);
+                    if (typeof url === 'string' && url.includes('api/timedtext')) {
+                        response.clone().text().then(text => {
+                            try {
+                                if(text && text.includes('events')) {
+                                    if(text.length > 4000) {
+                                        let chunksCount = Math.ceil(text.length / 4000);
+                                        for(let i=0; i<chunksCount; i++) {
+                                            let chunk = text.substring(i * 4000, (i+1) * 4000);
+                                            window.AndTransBridge.onFullTranscriptCapturedChunked(chunk, i, chunksCount);
+                                        }
+                                    } else {
+                                        window.AndTransBridge.onFullTranscriptCaptured(text);
+                                    }
+                                }
+                            } catch (e) {}
+                        }).catch(e=>{});
+                    }
+                    return response;
+                };
+
+                const originalXHR = window.XMLHttpRequest.prototype.open;
+                window.XMLHttpRequest.prototype.open = function() {
+                    this.addEventListener('load', function() {
+                        const url = arguments[1] || this.responseURL;
+                        if (typeof url === 'string' && url.includes('api/timedtext')) {
+                            try {
+                                const text = this.responseText;
+                                if(text && text.includes('events')) {
+                                    if(text.length > 4000) {
+                                        let chunksCount = Math.ceil(text.length / 4000);
+                                        for(let i=0; i<chunksCount; i++) {
+                                            let chunk = text.substring(i * 4000, (i+1) * 4000);
+                                            window.AndTransBridge.onFullTranscriptCapturedChunked(chunk, i, chunksCount);
+                                        }
+                                    } else {
+                                        window.AndTransBridge.onFullTranscriptCaptured(text);
+                                    }
+                                }
+                            } catch (e) {}
+                        }
+                    });
+                    return originalXHR.apply(this, arguments);
+                };
+            }
+
+            // 기존 하이잭 초기화
             if (window.andTransObserver) {
                 window.andTransObserver.disconnect();
             }
@@ -76,10 +129,14 @@ object YoutubeHijackEngine {
                         };
                         
                         let jsonStr = JSON.stringify(payload);
-                        if(jsonStr.length > 7000) {
-                            let chunksCount = Math.ceil(jsonStr.length / 7000);
+                        if(jsonStr.length > 3900) {
+                            // [V5-REFILL] 임계점 도달 시 영상 데이터 재수혈 시도 (단순 트리거)
+                            forceCC && forceCC();
+                        }
+                        if(jsonStr.length > 4000) {
+                            let chunksCount = Math.ceil(jsonStr.length / 4000);
                             for(let i=0; i<chunksCount; i++) {
-                                let chunk = jsonStr.substring(i * 7000, (i+1) * 7000);
+                                let chunk = jsonStr.substring(i * 4000, (i+1) * 4000);
                                 AndTransBridge.onSubtitleExtractedChunked(chunk, i, chunksCount);
                             }
                         } else {

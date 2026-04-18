@@ -39,10 +39,57 @@ class YoutubeJsBridgeImpl(
         viewModel.onVideoChanged(videoId)
     }
 
+    private val chunkBuffers = mutableMapOf<Int, StringBuilder>()
+
     @JavascriptInterface
-    override fun onFullTranscriptCaptured(jsonContent: String) {
-        val list = com.viitor.ui.tab2_script.SubtitleParserUtil.parseJson3Content(jsonContent)
-        viewModel.updateManualTranscript(list)
+    override fun onFullTranscriptCaptured(fullTranscript: String) {
+        Log.i("YoutubeJsBridge", "[JS-NETWORK-SNIFF] Single Packet: ${fullTranscript.take(50)}...")
+        handleFullTranscript(fullTranscript)
+    }
+
+    @JavascriptInterface
+    override fun onFullTranscriptCapturedChunked(chunk: String, index: Int, total: Int) {
+        val buffer = chunkBuffers.getOrPut(total) { StringBuilder() }
+        buffer.append(chunk)
+
+        if (index == total - 1) {
+            val fullTranscript = buffer.toString()
+            Log.w("YoutubeJsBridge", "[JS-NETWORK-SNIFF] Reassembled Packet: ${fullTranscript.length} bytes")
+            handleFullTranscript(fullTranscript)
+            chunkBuffers.remove(total)
+        }
+    }
+
+    private fun handleFullTranscript(data: String) {
+        val isLiveQueue = data.contains("actions") || data.contains("continuation")
+        val isJson3 = data.contains("events")
+        
+        if (isLiveQueue) {
+            Log.e("YoutubeJsBridge", "🎯🎯🎯 [LIVE-RADAR-HIT] 🎯🎯🎯 Size: ${data.length} | Preview: ${data.take(100)}")
+        } else if (isJson3) {
+            Log.i("YoutubeJsBridge", "💎 [VOD-SCRIPT-HIT] Captured JSON3 Packet. Size: ${data.length}")
+        } else {
+            Log.d("YoutubeJsBridge", "📡 [RADAR-SIGNAL] Packet Received (Other). Size: ${data.length} | Preview: ${data.take(50)}")
+        }
+        
+        viewModel.onFullTranscriptCaptured(data)
+    }
+
+    @JavascriptInterface
+    override fun onSubtitleCaptured(text: String) {
+        Log.i("YoutubeJsBridge", "🔥 [STT-QUEUE-HIT] $text")
+        viewModel.onSubtitleCaptured(text)
+    }
+
+    @JavascriptInterface
+    override fun onSubtitleCaptured(text: String) {
+        Log.i("YoutubeJsBridge", "🔥 [STT-QUEUE-HIT] $text")
+        viewModel.onSubtitleCaptured(text)
+    }
+
+    @JavascriptInterface
+    override fun onLog(msg: String) {
+        Log.d("YoutubeJsBridge", "[JS-CONSOLE] $msg")
     }
 
     private fun processPayload(jsonPayload: String) {

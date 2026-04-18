@@ -171,8 +171,28 @@ class BrowserFragment : Fragment() {
             Log.w("BrowserFragment", "[2.JS-HIJACK] No engine for URL=$currentUrl, skipping inject.")
             return
         }
+        
         Log.i("BrowserFragment", "[2.JS-HIJACK] Injecting ${engine::class.simpleName} for URL=$currentUrl")
-        webView?.evaluateJavascript(engine.injectScript, null)
+        
+        val script = if (engine is YoutubeLiveHijackEngine) {
+            // [V7-DEEP-IGNITION] 브릿지 준비 완료 시점에 즉시 SONAR 가동
+            """
+            (function() {
+                function tryIgnite() {
+                    if (window.AndTransBridge) {
+                        ${engine.injectScript}
+                    } else {
+                        setTimeout(tryIgnite, 500);
+                    }
+                }
+                tryIgnite();
+            })();
+            """.trimIndent()
+        } else {
+            engine.injectScript
+        }
+
+        webView?.evaluateJavascript(script, null)
     }
 
     private fun setupOverlayToggleBtn(view: View) {
@@ -240,6 +260,13 @@ class BrowserFragment : Fragment() {
         // [VIDEO-CHANGE-SYNC] 자동 감지된 비디오 정보를 공유 뷰모델에 전파하여 타 탭 상태 동기화
         viewModel.onVideoDetected = { videoId ->
             sharedViewModel.broadcastVideoId(videoId)
+        }
+
+        viewModel.onLiveFallbackListener = {
+            Log.e("BrowserFragment", "⚠️ [ENGINE-SWAP] VOD Engine signaled failure. Swapping to LIVE OMEGA...")
+            lifecycleScope.launch {
+                webView?.evaluateJavascript(com.viitor.hijack.YoutubeLiveHijackEngine.injectScript, null)
+            }
         }
 
         viewLifecycleOwner.lifecycleScope.launch {

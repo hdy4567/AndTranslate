@@ -22,26 +22,114 @@ object GlobalSubtitleRelay {
     /** [PRON3LAYER-STATE] T 버튼의 활성화 상태 동기화 */
     var isPron3LayerEnabled: Boolean = true
 
-    /** [TRANSCRIPT-REGISTRY] 하이재킹한 대본 전체 보관소 */
-    private var transcriptRegistry: List<SubtitleData> = emptyList()
+    /** [TRANSCRIPT-REGISTRY-SSOT] 하이재킹한 대본 전체 보관소 (Reactive Stream) */
+    private var _transcriptRegistry = kotlinx.coroutines.flow.MutableStateFlow<List<SubtitleData>>(emptyList())
+    val transcriptFlow: kotlinx.coroutines.flow.StateFlow<List<SubtitleData>> = _transcriptRegistry
 
-    fun updateTranscript(list: List<SubtitleData>) {
-        this.transcriptRegistry = list
-        Log.i(TAG, "[REGISTRY] Transcript loaded: ${list.size} lines.")
+    private val transcriptRegistry: List<SubtitleData> get() = _transcriptRegistry.value
+
+    /** [V5-PATCH-LOGIC] 전체 대본을 레지스트리에 일괄 업데이트 (Global Atomic Dedupe) */
+    @Synchronized
+    fun updateTranscript(newList: List<SubtitleData>) {
+        val deduped = mutableListOf<SubtitleData>()
+        val sortedInput = newList.sortedBy { it.anchorTimeMs }
+        
+        for (item in sortedInput) {
+            val text = item.origin1layer.trim().replace(Regex("\\s+"), " ")
+            if (text.isEmpty()) continue
+            
+            var isRedundant = false
+            var i = 0
+            while (i < deduped.size) {
+                val existingNorm = deduped[i].origin1layer.trim().replace(Regex("\\s+"), " ")
+                if (text.contains(existingNorm) || existingNorm.contains(text)) {
+                    if (text.length > existingNorm.length) {
+                        deduped.removeAt(i) // 기존 조각 제거
+                        continue
+                    } else {
+                        isRedundant = true // 더 긴 게 이미 있음
+                        break
+                    }
+                }
+                i++
+            }
+            if (!isRedundant) {
+                deduped.add(item.copy(origin1layer = text))
+            }
+        }
+        _transcriptRegistry.value = deduped.sortedBy { it.anchorTimeMs }
+        Log.i(TAG, "[REGISTRY-SSOT] Global Atomic Clean completed: ${deduped.size} lines.")
     }
 
-    /** [GLOBAL-FLUSH] 전체 시스템 자막 상태 초기화 */
+    /** [V5-PROACTIVE-SYNC] 번역이 완료된 데이터를 레지스트리에 통합 및 전파 */
+    @Synchronized
+    fun upsertTranscriptFull(data: SubtitleData) {
+        val currentList = transcriptRegistry.toMutableList()
+        val index = currentList.indexOfFirst { it.anchorTimeMs == data.anchorTimeMs }
+        if (index != -1) {
+            currentList[index] = data
+        } else {
+            currentList.add(data)
+        }
+        _transcriptRegistry.value = currentList.sortedBy { it.anchorTimeMs }
+    }
+
+    /** [V5-PATCH-LOGIC] 실시간 추출 원문을 레지스트리에 병합 (Global Atomic Dedupe) */
+    @Synchronized
+    fun upsertTranscriptWithDedupe(data: SubtitleData) {
+        val currentList = transcriptRegistry.toMutableList()
+        val rawInput = data.origin1layer.trim()
+        if (rawInput.isEmpty()) return
+        
+        val newText = rawInput.replace(Regex("\\s+"), " ")
+
+        // [V5-GLOBAL-ATOMIC-DEDUPE] 시간과 내용의 상관관계를 분석하여 정밀 병합
+        var i = 0
+        while (i < currentList.size) {
+            val existing = currentList[i]
+            val existingNorm = existing.origin1layer.trim().replace(Regex("\\s+"), " ")
+            
+            if (newText.contains(existingNorm) || existingNorm.contains(newText)) {
+                // 내용이 포함관계이고 시간 차이가 500ms 이내일 때만 병합 처리 (손실 방지)
+                if (Math.abs(data.anchorTimeMs - existing.anchorTimeMs) < 500) {
+                    if (newText.length >= existing.origin1layer.length) {
+                        currentList.removeAt(i)
+                        continue 
+                    } else {
+                        return
+                    }
+                }
+            }
+            i++
+        }
+
+        currentList.add(data.copy(origin1layer = newText))
+        _transcriptRegistry.value = currentList.sortedBy { it.anchorTimeMs }
+    }
+
+    /** [V5-BATCH-SOURCE] 미번역 구간 문장을 추출 */
+    fun getUntranslatedSegment(currentTimeMs: Long, targetSentenceParity: Int): List<SubtitleData> {
+        val safeSegmentCount = targetSentenceParity * 3
+        return transcriptRegistry
+            .filter { it.anchorTimeMs >= currentTimeMs && it.tras2layer.isNullOrBlank() }
+            .take(safeSegmentCount)
+    }
+
+    /** [GLOBAL-FLUSH] 전체 시스템 자막 상태 초기화 (영상 변경 시 필수) */
+    @Synchronized
     fun flush() {
         bufferRegistry.clear()
-        transcriptRegistry = emptyList()
-        onNewData?.invoke(SubtitleData.empty()) // [UI-FLUSH] 즉각적으로 화면 소독 신호 발송
-        Log.i(TAG, "[FLUSH] Global Subtitle State Cleared.")
+        _transcriptRegistry.value = emptyList()
+        onNewData?.invoke(SubtitleData.empty())
+        Log.i(TAG, "[FLUSH-SSOT] Global Subtitle State Reset.")
     }
 
     /** 시간대(ms)를 기준으로 대본에서 가장 근접한 문장을 찾아냄 */
     fun findTranscriptMatch(timeMs: Long): SubtitleData? {
-        if (transcriptRegistry.isEmpty()) return null
-        return transcriptRegistry.find { Math.abs(it.anchorTimeMs - timeMs) < 1000 }
+        // [V5-MATCH-STABILIZER] 1000ms로 윈도우를 확장하여 싱크 유실 방지
+        return transcriptRegistry.find { 
+            Math.abs(it.anchorTimeMs - timeMs) < 1000 
+        }
     }
 
     /** 텍스트 내용이 완전히 일치하는 대본을 찾아냄 */
@@ -84,70 +172,111 @@ object GlobalSubtitleRelay {
             onColorChanged?.invoke(value)
         }
 
-    @Synchronized
-    fun relay(data: SubtitleData): SubtitleData {
-        // [FLUSH-SIGNAL] anchorTimeMs가 0이면 데이터가 비어있어도 화면 소독을 위해 통과시킴
-        if (data.origin1layer.isBlank() && data.anchorTimeMs != 0L) return data
+    /** [V5-EMISSION-ENGINE] 통합 사출 통제소 (파일 통합 버전) */
+    object Emitter {
+        private val _overlayState = kotlinx.coroutines.flow.MutableStateFlow(com.viitor.ui.tab1_browser.domain.OverlayModel.empty())
+        val overlayState: kotlinx.coroutines.flow.StateFlow<com.viitor.ui.tab1_browser.domain.OverlayModel> = _overlayState
 
-        val matchedInRegistry = findTranscriptMatch(data.anchorTimeMs) ?: SubtitleData.empty()
-        
-        // 버퍼 정리 로직 (중복 및 유사 문장 제거)
-        val iterator = bufferRegistry.entries.iterator()
-        while (iterator.hasNext()) {
-            val entry = iterator.next()
-            if (Math.abs(entry.key - data.anchorTimeMs) < 1500 && transcriptRegistry.any { it.anchorTimeMs == data.anchorTimeMs }) {
-                iterator.remove()
-                continue
-            }
-            if (data.origin1layer.startsWith(entry.value.origin1layer) || entry.value.origin1layer.startsWith(data.origin1layer)) {
-                iterator.remove()
-            }
-        }
+        private var lastRelayedText: String = ""
+        private var lastRelayedTimeMs: Long = -1L
 
-        bufferRegistry[data.anchorTimeMs] = data
-        if (bufferRegistry.size > MAX_BUFFER_SIZE) {
-            bufferRegistry.remove(bufferRegistry.keys.first())
-        }
-
-        // 1레이어 (원문): 과거 2줄 + 현재 1줄 = 3줄
-        val pastOriginalSamples = findPastSubtitleData(data.anchorTimeMs, 2)
-        val currentL1Text = data.origin1layer.takeIf { it.isNotBlank() } ?: matchedInRegistry.origin1layer
-        val finalOriginal = pastOriginalSamples.map { it.origin1layer }.plus(currentL1Text).filter { it.isNotBlank() }.takeLast(3).joinToString("\n")
-        
-        // 2레이어 (번역): [현재 5줄(과거 4 + 현재 1)] + [미래 1줄] = 총 6줄
-        val pastTranslatedSamples = findPastSubtitleData(data.anchorTimeMs, 4)
-        val futureRegistry1 = transcriptRegistry.filter { it.anchorTimeMs > data.anchorTimeMs }.take(1)
-        
-        val currentTranslated = data.tras2layer.takeIf { !it.isNullOrBlank() } 
-            ?: matchedInRegistry.tras2layer 
-            ?: (if(currentL1Text.isNotBlank()) "번역 불러오는 중..." else "")
+        /** [CORE-EMISSION-GATE] 모든 상태 변화를 감지하여 최종 결과물을 사격함 */
+        fun emit(timeMs: Long, registry: List<SubtitleData>) {
+            val matchL1 = findTranscriptMatch(timeMs)
             
-        val finalTranslated = pastTranslatedSamples.map { it.tras2layer ?: "..." }
-            .plus(currentTranslated)
-            .plus(futureRegistry1.map { it.tras2layer ?: "[미래 문장]" })
-            .takeLast(6)
-            .joinToString("\n")
-        
-        // 3레이어 (발음): 과거 2줄 + 현재 1줄 = 3줄
-        val pastPronunciationSamples = findPastSubtitleData(data.anchorTimeMs, 2)
-        val currentPronunciation = data.pron3layer.takeIf { !it.isNullOrBlank() } 
-            ?: matchedInRegistry.pron3layer ?: ""
+            if (matchL1 == null) {
+                // [V5-DIAG] 매칭 실패 시 5초 이상 공백이면 화면 클리어 (VOD 점프 대응)
+                if (Math.abs(timeMs - lastRelayedTimeMs) > 5000) {
+                    _overlayState.value = com.viitor.ui.tab1_browser.domain.OverlayModel.empty()
+                }
+                return
+            }
+            
+            // [V5-PRELOAD] 2~3번째 레이어는 400ms 빠르게 나타나도록 시간 오프셋 적용
+            val matchL2L3 = findTranscriptMatch(timeMs + 400) ?: matchL1
+            
+            // 1. 조립 (1+2, 1+6 파리티 집합)
+            val combinedData = assembleContextVOD(matchL1, matchL2L3, registry)
 
-        val finalPronunciation = pastPronunciationSamples.map { it.pron3layer ?: "" }
-            .plus(currentPronunciation)
-            .filter { it.isNotBlank() }
-            .takeLast(3)
-            .joinToString("\n")
-        
-        val combinedData = SubtitleData(
-            anchorTimeMs = data.anchorTimeMs,
-            origin1layer = finalOriginal,
-            tras2layer = finalTranslated,
-            pron3layer = finalPronunciation
-        )
+            // 2. 가드 (시각적 변화가 없으면 사출 차단)
+            val currentL2Text = combinedData.tras2layer.orEmpty()
+            if (currentL2Text == lastRelayedText && Math.abs(combinedData.anchorTimeMs - lastRelayedTimeMs) < 1200) {
+                return
+            }
 
-        onNewData?.invoke(combinedData)
-        return combinedData
+            // 3. 상태 갱신 및 사출
+            lastRelayedText = currentL2Text
+            lastRelayedTimeMs = combinedData.anchorTimeMs
+
+            Log.i("GlobalSubtitleRelay", "[EMISSION-GATE] Target Pulse: $timeMs, Match: ${matchL1.anchorTimeMs}, L2: ${currentL2Text.take(20)}...")
+
+            // [V5-RECONNECT-UI] 오버레이 서비스로 콜백 전송 (UI 갱신 트리거)
+            onNewData?.invoke(combinedData)
+
+            _overlayState.value = com.viitor.ui.tab1_browser.domain.OverlayModel(
+                payload = com.viitor.ui.tab1_browser.domain.SubtitlePayload(combinedData.anchorTimeMs, combinedData.origin1layer),
+                tras2layer = combinedData.tras2layer ?: "",
+                pron3layer = combinedData.pron3layer ?: ""
+            )
+        }
+
+        private fun assembleContextVOD(dataL1: SubtitleData, dataL2L3: SubtitleData, registry: List<SubtitleData>): SubtitleData {
+            val futureRegistryL1 = registry.filter { it.anchorTimeMs > dataL1.anchorTimeMs }
+            val futureRegistryL2L3 = registry.filter { it.anchorTimeMs > dataL2L3.anchorTimeMs }
+
+            fun getUniqueFuture(count: Int, startData: SubtitleData, futureReg: List<SubtitleData>, layerSelector: (SubtitleData) -> String?): List<String> {
+                val uniqueList = mutableListOf<String>()
+                val uniqueNorms = mutableSetOf<String>()
+                val currentText = layerSelector(startData).orEmpty()
+                val currentNorm = currentText.replace(Regex("[^\\p{L}\\p{N}]"), "").trim()
+                if (currentNorm.isNotBlank()) uniqueNorms.add(currentNorm)
+
+                for (entry in futureReg) {
+                    val rawText = layerSelector(entry).orEmpty()
+                    // [V5-SENTENCE-INTEGRITY] 불필요한 분절 없이 문장 흐름 보존
+                    val segments = rawText.split("\n").filter { it.isNotBlank() }
+                    for (s in segments) {
+                        val norm = s.replace(Regex("[^\\p{L}\\p{N}]"), "").trim()
+                        if (norm.isNotBlank() && !uniqueNorms.contains(norm)) {
+                            uniqueList.add(s.trim())
+                            uniqueNorms.add(norm)
+                            if (uniqueList.size >= count) return uniqueList
+                        }
+                    }
+                }
+                return uniqueList
+            }
+
+            // [L1-Parity] 원문 문맥 보존
+            val currentL1 = dataL1.origin1layer.split("\n").filter { it.isNotBlank() }
+            val nextL1 = getUniqueFuture(2, dataL1, futureRegistryL1) { it.origin1layer }
+            val finalL1 = (currentL1 + nextL1).joinToString("\n")
+
+            // [L2-Parity] 번역 문맥 보존 (문장 단위, 0.4초 먼저 노출)
+            val currentL2 = (dataL2L3.tras2layer ?: "").split("\n").filter { it.isNotBlank() }
+            val nextL2 = getUniqueFuture(6, dataL2L3, futureRegistryL2L3) { it.tras2layer ?: "" }
+            val finalL2 = if (currentL2.isEmpty() && nextL2.isEmpty()) {
+                if (dataL1.origin1layer.isNotBlank()) "[번역 대기 중...]" else ""
+            } else {
+                (currentL2 + nextL2).joinToString("\n")
+            }
+
+            // [L3-Parity] 발음 문맥 보존 (0.4초 먼저 노출)
+            val nextL3 = getUniqueFuture(3, dataL2L3, futureRegistryL2L3) { it.pron3layer ?: "" }
+            val finalL3 = nextL3.joinToString(" ")
+
+            return dataL1.copy(
+                origin1layer = finalL1,
+                tras2layer = finalL2,
+                pron3layer = finalL3
+            )
+        }
+
+        fun clear() {
+            _overlayState.value = com.viitor.ui.tab1_browser.domain.OverlayModel.empty()
+            lastRelayedText = ""
+            lastRelayedTimeMs = -1L
+        }
     }
 
     fun togglePlayback() {

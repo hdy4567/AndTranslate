@@ -9,8 +9,8 @@ import android.util.Log
  * - 강화: 전역 에러 캐칭 및 브릿지 연결성 강화
  */
 object YoutubeHijackEngine : IHijackEngine {
-
-    override val urlPattern = Regex("(youtube\\.com|youtu\\.be)")
+    // VOD 엔진은 일반 페이지용 (라이브 레이더에 양보)
+    override val urlPattern = Regex("m\\.youtube\\.com/(?!watch).*")
 
     override val injectScript = """
         (function() {
@@ -33,10 +33,15 @@ object YoutubeHijackEngine : IHijackEngine {
                     lastText: "",
                     lastSyncTime: 0,
                     jaTrackLock: false,
+                    isFullScriptLoaded: false, // [V5-OPT] 대본 로드 완료 플래그
                     
                     ignite() {
                         console.log(TAG + ' Engine Igniting (0.1s Precision Mode).');
+                        this.installNetworkSniffer();
                         this.installStealthCSS();
+                        
+                        // [V5-MODE-CHECK] 라이브 여부에 따른 가벼운 상태 체크
+                        this.checkModeChange();
                         
                         // 100ms 고성능 감시 루프
                         window.andTransIntervalId = setInterval(() => {
@@ -44,7 +49,67 @@ object YoutubeHijackEngine : IHijackEngine {
                         }, 100);
                         this.setupObserver();
                         this.bindVideoEvents();
+                        this.fetchFullScript(); // [V5-EARLY-SYNC]
                         console.log(TAG + ' Engine READY.');
+                    },
+
+                    installNetworkSniffer() {
+                        if (window.andTransNetworkSnifferInstalled) return;
+                        window.andTransNetworkSnifferInstalled = true;
+                        
+                        const originalFetch = window.fetch;
+                        window.fetch = async function() {
+                            // [YIELD-TO-LIVE] 라이브 모드라면 스니핑 주도권을 LiveRadar에게 완전히 양보
+                            if (window.LiveRadar && window.LiveRadar.active) return originalFetch.apply(this, arguments);
+
+                            const url = arguments[0];
+                            const response = await originalFetch.apply(this, arguments);
+                            if (typeof url === 'string' && url.includes('api/timedtext')) {
+                                response.clone().text().then(text => {
+                                    try {
+                                        if(text && text.includes('events')) {
+                                            window.AndTransBridge?.onLog?.('🎯 [NETWORK-FETCH] Sniffed timedtext API response! Size: ' + text.length);
+                                            if(text.length > 4000) {
+                                                let chunksCount = Math.ceil(text.length / 4000);
+                                                for(let i=0; i<chunksCount; i++) {
+                                                    let chunk = text.substring(i * 4000, (i+1) * 4000);
+                                                    window.AndTransBridge?.onFullTranscriptCapturedChunked?.(chunk, i, chunksCount);
+                                                }
+                                            } else {
+                                                window.AndTransBridge?.onFullTranscriptCaptured?.(text);
+                                            }
+                                        }
+                                    } catch (e) {}
+                                }).catch(e=>{});
+                            }
+                            return response;
+                        };
+
+                        const originalXHR = window.XMLHttpRequest.prototype.open;
+                        window.XMLHttpRequest.prototype.open = function() {
+                            this.addEventListener('load', function() {
+                                const url = arguments[1] || this.responseURL;
+                                if (typeof url === 'string' && url.includes('api/timedtext')) {
+                                    try {
+                                        const text = this.responseText;
+                                        if(text && text.includes('events')) {
+                                            window.AndTransBridge?.onLog?.('🎯 [NETWORK-XHR] Sniffed timedtext API response! Size: ' + text.length);
+                                            if(text.length > 4000) {
+                                                let chunksCount = Math.ceil(text.length / 4000);
+                                                for(let i=0; i<chunksCount; i++) {
+                                                    let chunk = text.substring(i * 4000, (i+1) * 4000);
+                                                    window.AndTransBridge?.onFullTranscriptCapturedChunked?.(chunk, i, chunksCount);
+                                                }
+                                            } else {
+                                                window.AndTransBridge?.onFullTranscriptCaptured?.(text);
+                                            }
+                                        }
+                                    } catch (e) {}
+                                }
+                            });
+                            return originalXHR.apply(this, arguments);
+                        };
+                        console.log(TAG + ' Network Sniffer (Fetch/XHR) Active.');
                     },
 
                     installStealthCSS() {
@@ -65,6 +130,7 @@ object YoutubeHijackEngine : IHijackEngine {
                             console.log(TAG + ' [FLUSH] URL Shift detected: ' + location.href);
                             this.lastUrl = location.href;
                             this.jaTrackLock = false;
+                            this.isFullScriptLoaded = false; // [V5-OPT] 로드 상태 리셋
 
                             // [BRIDGE-SIGNAL] 네이티브에 비디오 변경 알림 (버퍼 리셋 트리거)
                             try {
@@ -76,7 +142,11 @@ object YoutubeHijackEngine : IHijackEngine {
                             } catch(e) {}
                             
                             this.enforceCC();
+                            this.checkModeChange();
                         }
+
+                        // [YIELD-TO-LIVE] 라이브 패킷 레이더가 작동 중이면 VOD 엔진의 동작을 정지 (양보)
+                        if (window.LiveRadar && window.LiveRadar.active) return;
 
                         // CC 버튼 상태 감시는 이제 autoSelectJA()가 총괄함
 
@@ -105,10 +175,9 @@ object YoutubeHijackEngine : IHijackEngine {
                         
                         if (ccBtn) {
                             if (ccBtn.getAttribute('aria-pressed') !== 'true') {
-                                // 단순 클릭이 아닌 배후 이벤트(Pointer/Mouse) 동시 발송
-                                console.log(TAG + ' [DIAGNOSTIC] CC Ignited (Direct Match)');
-                                ccBtn.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
-                                ccBtn.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+                                // [BETA-GUARD] 배후 이벤트(Pointer/Mouse)는 오류 방지를 위해 잠시 주석 처리
+                                // ccBtn.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
+                                // ccBtn.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
                                 ccBtn.click();
                             }
                             this.jaTrackLock = true;
@@ -119,10 +188,14 @@ object YoutubeHijackEngine : IHijackEngine {
 
                     capture(force) {
                         try {
+                            // [V5-OPT] 대본이 이미 있다면 실시간 CC 캡처(DOM 스캔) 생략
+                            if (this.isFullScriptLoaded && !force) return;
+
                             const segs = document.querySelectorAll('.ytp-caption-segment');
                             if (segs.length === 0) return;
 
-                            const text = Array.from(segs).map(s => s.innerText).join(' ').trim();
+                            // [V5-LINE-SEPARATION] 공백이 아닌 || 구분자로 합쳐서 1레이어 개별성 유지
+                            const text = Array.from(segs).map(s => s.innerText.trim()).filter(t => !!t).join(' || ');
                             if (!text) return;
 
                             if (force || text !== this.lastText) {
@@ -132,13 +205,17 @@ object YoutubeHijackEngine : IHijackEngine {
                                 
                                 const payload = JSON.stringify({ anchorTimeMs: aTime, origin1layer: text });
                                 console.log(TAG + ' [HIJACK] Captured: ' + text.substring(0, 20));
+                                 if (payload.length > 3900) {
+                                    this.isFullScriptLoaded = false; 
+                                    this.fetchFullScript(); 
+                                }
 
-                                // [CHUNK-RELAY] 7000자 단위 청킹 스트림 전송
+                                // [CHUNK-RELAY] 4000자 단위 청킹 스트림 전송
                                 if (window.AndTransBridge) {
-                                    if (payload.length > 7000) {
-                                        const total = Math.ceil(payload.length / 7000);
+                                    if (payload.length > 4000) {
+                                        const total = Math.ceil(payload.length / 4000);
                                         for (let i = 0; i < total; i++) {
-                                            const chunk = payload.substring(i * 7000, (i + 1) * 7000);
+                                            const chunk = payload.substring(i * 4000, (i + 1) * 4000);
                                             window.AndTransBridge.onSubtitleExtractedChunked(chunk, i, total);
                                         }
                                     } else {
@@ -207,11 +284,76 @@ object YoutubeHijackEngine : IHijackEngine {
                     },
 
                     fetchFullScript() {
-                        const r = window.ytInitialPlayerResponse;
-                        const t = r?.captions?.playerCaptionsTracklistRenderer?.captionTracks?.find(x => x.languageCode === 'ja');
-                        if (t?.baseUrl) fetch(t.baseUrl + '&fmt=json3').then(x => x.json()).then(d => {
-                            window.AndTransBridge?.onFullTranscriptCaptured(JSON.stringify(d));
-                        });
+                        try {
+                            // [V5-BRUTE-FORCE] 전역 HTML 정규식 전수 조사 (가장 강력한 입구 전략)
+                            const html = document.documentElement.innerHTML;
+                            const timedTextRegex = /"(https:[^"]*?\/api\/timedtext[^"]*?)"/g;
+                            let match;
+                            let baseUrl = null;
+                            let fetchOrigin = "UNKNOWN";
+
+                            while ((match = timedTextRegex.exec(html)) !== null) {
+                                let url = match[1].replace(/\\u0026/g, '&').replace(/\\/g, '');
+                                if (url.includes('vssId') && (url.includes('ja') || url.includes('.ja'))) {
+                                    baseUrl = url;
+                                    fetchOrigin = "0순위: HTML-REGEX-BRUTEFORCE";
+                                    break; 
+                                }
+                            }
+
+                            // 2차 백업: window 객체 얕은 탐색 (데스크탑 / 모바일 범용)
+                            if (!baseUrl) {
+                                const tracksInit = window.ytInitialPlayerResponse?.captions?.playerCaptionsTracklistRenderer?.captionTracks;
+                                const tracksConfig = window.ytplayer?.config?.args?.raw_player_response?.filter ? window.ytplayer.config.args.raw_player_response.filter(x => x.captionTracks)?.pop()?.captionTracks : window.ytplayer?.config?.args?.raw_player_response?.captions?.playerCaptionsTracklistRenderer?.captionTracks;
+                                
+                                // 모바일 전용 3차 백업 (ytm-watch)
+                                const ytmWatch = document.querySelector('ytm-watch');
+                                const tracksYtm = ytmWatch ? ytmWatch.playerResponse?.captions?.playerCaptionsTracklistRenderer?.captionTracks : null;
+
+                                let finalTracks = null;
+                                if (tracksInit && tracksInit.length > 0) { finalTracks = tracksInit; fetchOrigin = "1순위: window.ytInitialPlayerResponse"; }
+                                else if (tracksYtm && tracksYtm.length > 0) { finalTracks = tracksYtm; fetchOrigin = "3순위: 모바일 DOM <ytm-watch>"; }
+                                else if (tracksConfig && tracksConfig.length > 0) { finalTracks = tracksConfig; fetchOrigin = "2순위: window.ytplayer.config"; }
+
+                                const ja = Array.isArray(finalTracks) ? finalTracks.find(t => t.languageCode === 'ja' || t.vssId?.includes('ja')) : null;
+                                if (ja?.baseUrl) baseUrl = ja.baseUrl;
+                            }
+
+                            if (baseUrl) {
+                                window.AndTransBridge?.onLog?.('🎯 [V5-SCRIPT-ORIGIN] Found Script URL via: ' + fetchOrigin);
+                                fetch(baseUrl + '&fmt=json3').then(x => x.json()).then(d => {
+                                    const payload = JSON.stringify(d);
+                                    window.AndTransBridge?.onLog?.('🔥 Bulk Script Data Captured: ' + payload.length + ' chars');
+
+                                    
+                                    if(payload.length > 4000) {
+                                        let chunksCount = Math.ceil(payload.length / 4000);
+                                        for(let i=0; i<chunksCount; i++) {
+                                            let chunk = payload.substring(i * 4000, (i+1) * 4000);
+                                            window.AndTransBridge?.onFullTranscriptCapturedChunked?.(chunk, i, chunksCount);
+                                        }
+                                    } else {
+                                        window.AndTransBridge?.onFullTranscriptCaptured?.(payload);
+                                    }
+                                }).catch(e => window.AndTransBridge?.onLog?.('Bulk Fetch Fail: ' + e));
+                            } else {
+                                setTimeout(() => this.fetchFullScript(), 5000);
+                            }
+                        } catch(err) {
+                            window.AndTransBridge?.onLog?.('JS-FATAL: ' + err.message);
+                        }
+                    },
+
+                    installStealthCSS() {
+                        const style = document.createElement('style');
+                        style.textContent = '.ytp-caption-window-container { visibility: hidden !important; opacity:0; }';
+                        document.head.appendChild(style);
+                    },
+
+                    checkModeChange() {
+                        if (window.LiveRadar) {
+                            window.LiveRadar.active = true;
+                        }
                     }
                 };
 

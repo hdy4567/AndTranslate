@@ -357,6 +357,10 @@ class SubtitleCaptureService : Service() {
             setTextColor(clr)
             setPadding(0, 5, 0, 5)
             text = "---"
+            // [V5-UI-STABILITY] 여러 줄 자막 지원 (최대 10줄)
+            setSingleLine(false)
+            maxLines = 10
+            setHorizontallyScrolling(false)
         }
     }
 

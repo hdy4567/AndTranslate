@@ -6,7 +6,6 @@ import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
-
 import com.viitor.pipeline.core.SubtitleData
 
 /**
@@ -49,20 +48,24 @@ object SubtitleParserUtil {
                         val segObj = segsArray.getJSONObject(j)
                         val textChunk = segObj.optString("utf8", "")
                         
-                        if (textChunk.isNotBlank() && textChunk != "\n" && !textChunk.contains("♪")) {
+                        // [V5-LINE-RECOVERY] \n 기호를 || 구분자로 치환하여 줄바꿈 유지
+                        if (textChunk == "\n") {
+                            segBuilder.append(" || ")
+                        } else if (textChunk.isNotBlank() && !textChunk.contains("♪")) {
                             segBuilder.append(textChunk)
                         }
                     }
                     
                     val finalLine = segBuilder.toString().trim()
                     if (finalLine.isNotBlank()) {
+                        // || 기호를 기준으로 실제 개별 자막(1레이어 단위)으로 분절
                         val segments = if (finalLine.contains("||")) finalLine.split("||") else listOf(finalLine)
                         segments.forEachIndexed { index, s ->
                             val cleanS = s.trim()
                             if (cleanS.isNotBlank()) {
                                 resultList.add(SubtitleData(
                                     videoId = "BULK_FETCH",
-                                    anchorTimeMs = startTimeMs + (index * 100),
+                                    anchorTimeMs = startTimeMs + (index * 50),
                                     origin1layer = cleanS
                                 ))
                             }

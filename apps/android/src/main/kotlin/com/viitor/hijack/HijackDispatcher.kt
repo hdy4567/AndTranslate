@@ -16,6 +16,8 @@ object HijackDispatcher {
     /** 플랫폼 우선순위 순 등록 */
     private val engines: List<IHijackEngine> = listOf(
         YoutubeHijackEngine,
+        YoutubeLiveHijackEngine,
+        YoutubeHijackEngine,
         TwitchHijackEngine
     )
 
@@ -25,11 +27,14 @@ object HijackDispatcher {
      */
     fun resolve(url: String?): IHijackEngine? {
         if (url.isNullOrBlank()) return null
+        
+        // [RESOLVE-STRATEGY] YouTube를 최우선으로 검사
         val matched = engines.firstOrNull { it.urlPattern.containsMatchIn(url) }
+        
         if (matched != null) {
-            Log.i(TAG, "[DISPATCH] URL='$url' → Engine=${matched::class.simpleName}")
+            Log.i(TAG, "🎯 [ENGINE-MATCH] Engine Selection: ${matched::class.simpleName} for URL: $url")
         } else {
-            Log.w(TAG, "[DISPATCH] No engine matched for URL='$url'")
+            Log.w(TAG, "⚠️ [ENGINE-MISS] No engine matched for URL: $url")
         }
         return matched
     }
