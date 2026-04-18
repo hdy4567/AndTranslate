@@ -103,35 +103,44 @@ object YoutubeHijackEngine : IHijackEngine {
  
                     autoSelectJA() {
                         if (this.jaTrackLock) return;
-                        const sets = document.querySelector('.ytp-settings-button');
+                        // 데스크톱(.ytp-settings-button) 및 모바일(aria-label 기반) 통합 탐색
+                        const sets = document.querySelector('.ytp-settings-button') || 
+                                     document.querySelector('button[aria-label*="설정"]') || 
+                                     document.querySelector('button[aria-label*="Settings"]');
+                        
+                        // [FAST-MOBILE-CC] 설정 메뉴 안 들어가도 자막 버튼이 밖에 있으면 즉시 클릭
+                        const directCC = document.querySelector('.ytp-subtitles-button') || 
+                                         document.querySelector('button[aria-label*="자막"]') || 
+                                         document.querySelector('button[aria-label*="Captions"]');
+                        if (directCC && directCC.getAttribute('aria-pressed') !== 'true') {
+                            console.log(TAG + ' [LIT-UP] Direct CC Clicked.');
+                            directCC.click();
+                        }
+
                         if (!sets) {
-                             setTimeout(() => this.autoSelectJA(), 100);
+                             setTimeout(() => this.autoSelectJA(), 200);
                              return;
                         }
                         
-                        console.log(TAG + ' [LIT-UP] CC Engine Activated. Traversing menus...');
+                        console.log(TAG + ' [LIT-UP] CC Engine Activated. Traversing...');
                         sets.click();
                         setTimeout(() => {
-                            const items = Array.from(document.querySelectorAll('.ytp-menuitem'));
-                            const subMenu = items.find(i => i.innerText.includes('자막') || i.innerText.includes('Subtitles'));
+                            const items = Array.from(document.querySelectorAll('.ytp-menuitem, .yt-spec-button-shape-next'));
+                            const subMenu = items.find(i => /자막|Subtitles/i.test(i.innerText));
                             if (subMenu) {
                                 subMenu.click();
                                 setTimeout(() => {
-                                    const tracks = Array.from(document.querySelectorAll('.ytp-menuitem'));
-                                    const target = tracks.find(t => 
-                                        (/일본어|Japanese|ja/i.test(t.innerText)) && 
-                                        (!t.innerText.includes('자동')) && 
-                                        (!t.innerText.includes('generated'))
-                                    );
+                                    const tracks = Array.from(document.querySelectorAll('.ytp-menuitem, .yt-spec-button-shape-next'));
+                                    const target = tracks.find(t => /일본어|Japanese|ja/i.test(t.innerText) && !/자동|auto/i.test(t.innerText));
                                     if (target) {
-                                        console.log(TAG + ' [LIT-UP] Targeted Japanese track selected.');
+                                        console.log(TAG + ' [LIT-UP] Targeted track selected.');
                                         target.click();
                                         this.jaTrackLock = true;
                                     }
                                     sets.click();
-                                }, 200);
+                                }, 300);
                             } else sets.click();
-                        }, 200);
+                        }, 300);
                     },
 
                     capture(force) {
