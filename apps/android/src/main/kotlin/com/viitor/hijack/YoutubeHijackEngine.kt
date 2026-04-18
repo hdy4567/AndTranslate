@@ -98,16 +98,18 @@ object YoutubeHijackEngine : IHijackEngine {
                     },
 
                     enforceCC() {
-                        // [FAST-TRACK] 키보드 단축키 'c' 시뮬레이션으로 즉시 활성화 시도
-                        document.dispatchEvent(new KeyboardEvent('keydown', { 'keyCode': 67, 'which': 67 }));
-                        setTimeout(() => this.autoSelectJA(), 500);
+                        this.autoSelectJA();
                     },
-
+ 
                     autoSelectJA() {
                         if (this.jaTrackLock) return;
                         const sets = document.querySelector('.ytp-settings-button');
-                        if (!sets) return;
+                        if (!sets) {
+                             setTimeout(() => this.autoSelectJA(), 100);
+                             return;
+                        }
                         
+                        console.log(TAG + ' [LIT-UP] CC Engine Activated. Traversing menus...');
                         sets.click();
                         setTimeout(() => {
                             const items = Array.from(document.querySelectorAll('.ytp-menuitem'));
@@ -116,22 +118,20 @@ object YoutubeHijackEngine : IHijackEngine {
                                 subMenu.click();
                                 setTimeout(() => {
                                     const tracks = Array.from(document.querySelectorAll('.ytp-menuitem'));
-                                    // 정밀 매칭: 일본어[1] 또는 Japanese 수동 트랙 우선 선택 (자동 생성 트랙 엄격 배제)
                                     const target = tracks.find(t => 
                                         (/일본어|Japanese|ja/i.test(t.innerText)) && 
                                         (!t.innerText.includes('자동')) && 
-                                        (!t.innerText.includes('generated')) &&
-                                        (!t.innerText.includes('Auto'))
+                                        (!t.innerText.includes('generated'))
                                     );
                                     if (target) {
-                                        console.log(TAG + ' Targeted Japanese track found: ' + target.innerText);
+                                        console.log(TAG + ' [LIT-UP] Targeted Japanese track selected.');
                                         target.click();
                                         this.jaTrackLock = true;
                                     }
                                     sets.click();
-                                }, 400);
+                                }, 200);
                             } else sets.click();
-                        }, 400);
+                        }, 200);
                     },
 
                     capture(force) {
@@ -224,24 +224,11 @@ object YoutubeHijackEngine : IHijackEngine {
                     },
 
                     fetchFullScript() {
-                        try {
-                            const pResp = window.ytInitialPlayerResponse || (window.ytplayer && window.ytplayer.config && window.ytplayer.config.args ? JSON.parse(window.ytplayer.config.args.player_response) : null);
-                            if (!pResp || !pResp.captions) return;
-                            
-                            const tracks = pResp.captions.playerCaptionsTracklistRenderer.captionTracks;
-                            const jaTrack = tracks.find(t => t.languageCode === 'ja' || (t.vssId && t.vssId.includes('.ja')));
-                            if (jaTrack && jaTrack.baseUrl) {
-                                console.log(TAG + ' Bulk Script Target: ' + jaTrack.baseUrl);
-                                fetch(jaTrack.baseUrl + '&fmt=json3')
-                                    .then(r => r.json())
-                                    .then(data => {
-                                        if (window.AndTransBridge && window.AndTransBridge.onFullTranscriptCaptured) {
-                                            window.AndTransBridge.onFullTranscriptCaptured(JSON.stringify(data));
-                                            console.log(TAG + ' Success: 7000+ characters Bulk Pushed.');
-                                        }
-                                    }).catch(err => console.error(TAG + ' Fetch Error: ' + err));
-                            }
-                        } catch(e) { console.error(TAG + ' Bulk Prep Error: ' + e); }
+                        const r = window.ytInitialPlayerResponse;
+                        const t = r?.captions?.playerCaptionsTracklistRenderer?.captionTracks?.find(x => x.languageCode === 'ja');
+                        if (t?.baseUrl) fetch(t.baseUrl + '&fmt=json3').then(x => x.json()).then(d => {
+                            window.AndTransBridge?.onFullTranscriptCaptured(JSON.stringify(d));
+                        });
                     }
                 };
 

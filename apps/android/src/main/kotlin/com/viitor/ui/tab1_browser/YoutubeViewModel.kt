@@ -54,15 +54,12 @@ class YoutubeViewModel : ViewModel() {
             return
         }
 
-        // [HYPER-PASS] 이미 전체 대본(Registry)에 번역본이 있다면 무거운 API 루프 없이 즉시 투출
+        // [HYPER-PASS] 대본에 번역본이 있다면 즉시 투출 (0ms)
         val cached = com.viitor.pipeline.core.GlobalSubtitleRelay.findTranscriptMatch(payload.anchorTimeMs)
         if (cached != null && !cached.tras2layer.isNullOrBlank()) {
-            // [REDUNDANCY-GUARD] 방금 보낸 동일 시간대의 자막이면 중복 사출 차단
             if (lastRelayedTimeMs == cached.anchorTimeMs) return 
-            
             lastRelayedTimeMs = cached.anchorTimeMs
             com.viitor.pipeline.core.GlobalSubtitleRelay.relay(cached)
-            Log.d("YoutubeViewModel", "[HYPER-PASS] Instant Relay for Time: ${payload.anchorTimeMs}")
             return
         }
 
@@ -310,8 +307,6 @@ class YoutubeViewModel : ViewModel() {
 
     fun updateManualTranscript(list: List<com.viitor.pipeline.core.SubtitleData>) {
         com.viitor.pipeline.core.GlobalSubtitleRelay.updateTranscript(list)
-        // [AUDIT] 2탭(Script) 리스트 동기화를 위해 UI 신호 발송 가능
-        Log.i("YoutubeViewModel", "[REGISTRY-SYNC] Registry populated with ${list.size} lines in background.")
     }
 
     fun updateCurrentTime(timeMs: Long) {

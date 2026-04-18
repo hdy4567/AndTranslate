@@ -41,14 +41,8 @@ class YoutubeJsBridgeImpl(
 
     @JavascriptInterface
     override fun onFullTranscriptCaptured(jsonContent: String) {
-        try {
-            Log.i("YoutubeJsBridge", "[JS-BRIDGE] 7000+ Bulk Transcript Received.")
-            val list = com.viitor.ui.tab2_script.SubtitleParserUtil.parseJson3Content(jsonContent)
-            viewModel.updateManualTranscript(list)
-            Log.d("YoutubeJsBridge", "[JS-BRIDGE] Registry Synchronized: ${list.size} lines.")
-        } catch (e: Exception) {
-            Log.e("YoutubeJsBridge", "Bulk Handle Error", e)
-        }
+        val list = com.viitor.ui.tab2_script.SubtitleParserUtil.parseJson3Content(jsonContent)
+        viewModel.updateManualTranscript(list)
     }
 
     private fun processPayload(jsonPayload: String) {
