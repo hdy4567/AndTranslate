@@ -60,13 +60,19 @@ object GlobalSubtitleRelay {
 
     /** [HISTORY-LOOKUP] 특정 시간 이전의 과거 문장들을 가져옴 (번역 문맥용) */
     fun findPastOriginals(currentTimeMs: Long, count: Int): List<String> {
-        return findPastSubtitleDataFromRegistry(currentTimeMs, count).map { it.origin1layer }
+        return findPastSubtitleData(currentTimeMs, count).map { it.origin1layer }
     }
 
-    /** 정적 대본 레지스트리에서 과거 데이터 추출 */
-    private fun findPastSubtitleDataFromRegistry(currentTimeMs: Long, count: Int): List<SubtitleData> {
-        return transcriptRegistry
+    /** [LIVE-CONTEXT-ENGINE] 대본 레지스트리 또는 실시간 버퍼에서 유동적으로 과거 데이터 추출 */
+    private fun findPastSubtitleData(currentTimeMs: Long, count: Int): List<SubtitleData> {
+        // 1순위: 대본 레지스트리 (수동 자막이 있을 때 우선권)
+        val fromRegistry = transcriptRegistry.filter { it.anchorTimeMs < currentTimeMs }
+        if (fromRegistry.isNotEmpty()) return fromRegistry.takeLast(count)
+        
+        // 2순위: 실시간 버퍼 (라이브 추출 시 사용)
+        return bufferRegistry.values
             .filter { it.anchorTimeMs < currentTimeMs }
+            .sortedBy { it.anchorTimeMs }
             .takeLast(count)
     }
 
@@ -84,10 +90,8 @@ object GlobalSubtitleRelay {
         if (data.origin1layer.isBlank() && data.anchorTimeMs != 0L) return data
 
         val matchedInRegistry = findTranscriptMatch(data.anchorTimeMs) ?: SubtitleData.empty()
-        // 과거 문맥 2문장 추출
-        val pastBuffer = findPastSubtitleDataFromRegistry(data.anchorTimeMs, 2)
-
-        // 버퍼 정리 로직 (중복 및 고스트 제거)
+        
+        // 버퍼 정리 로직 (중복 및 유사 문장 제거)
         val iterator = bufferRegistry.entries.iterator()
         while (iterator.hasNext()) {
             val entry = iterator.next()
@@ -105,29 +109,31 @@ object GlobalSubtitleRelay {
             bufferRegistry.remove(bufferRegistry.keys.first())
         }
 
-        // 1레이어: 과거 2줄 + 현재 1줄 = 3줄
+        // 1레이어 (원문): 과거 2줄 + 현재 1줄 = 3줄
+        val pastOriginalSamples = findPastSubtitleData(data.anchorTimeMs, 2)
         val currentL1Text = data.origin1layer.takeIf { it.isNotBlank() } ?: matchedInRegistry.origin1layer
-        val finalOriginal = pastBuffer.map { it.origin1layer }.plus(currentL1Text).filter { it.isNotBlank() }.takeLast(3).joinToString("\n")
+        val finalOriginal = pastOriginalSamples.map { it.origin1layer }.plus(currentL1Text).filter { it.isNotBlank() }.takeLast(3).joinToString("\n")
         
-        // 2레이어: [현재 5줄(과거 4 + 현재 1)] + [미래 1줄] = 총 6줄
-        val pastRegistry4 = findPastSubtitleDataFromRegistry(data.anchorTimeMs, 4)
+        // 2레이어 (번역): [현재 5줄(과거 4 + 현재 1)] + [미래 1줄] = 총 6줄
+        val pastTranslatedSamples = findPastSubtitleData(data.anchorTimeMs, 4)
         val futureRegistry1 = transcriptRegistry.filter { it.anchorTimeMs > data.anchorTimeMs }.take(1)
         
         val currentTranslated = data.tras2layer.takeIf { !it.isNullOrBlank() } 
             ?: matchedInRegistry.tras2layer 
             ?: (if(currentL1Text.isNotBlank()) "번역 불러오는 중..." else "")
             
-        val finalTranslated = pastRegistry4.filter { it.anchorTimeMs != data.anchorTimeMs }.map { it.tras2layer ?: "..." }
+        val finalTranslated = pastTranslatedSamples.map { it.tras2layer ?: "..." }
             .plus(currentTranslated)
-            .plus(futureRegistry1.map { it.tras2layer ?: "[미래 문장]" }) // 미래 자막 추가
+            .plus(futureRegistry1.map { it.tras2layer ?: "[미래 문장]" })
             .takeLast(6)
             .joinToString("\n")
         
-        // 3레이어: 과거 2줄 + 현재 1줄 = 3줄
+        // 3레이어 (발음): 과거 2줄 + 현재 1줄 = 3줄
+        val pastPronunciationSamples = findPastSubtitleData(data.anchorTimeMs, 2)
         val currentPronunciation = data.pron3layer.takeIf { !it.isNullOrBlank() } 
             ?: matchedInRegistry.pron3layer ?: ""
 
-        val finalPronunciation = pastRegistry4.filter { it.anchorTimeMs != data.anchorTimeMs }.map { it.pron3layer ?: "" }
+        val finalPronunciation = pastPronunciationSamples.map { it.pron3layer ?: "" }
             .plus(currentPronunciation)
             .filter { it.isNotBlank() }
             .takeLast(3)
