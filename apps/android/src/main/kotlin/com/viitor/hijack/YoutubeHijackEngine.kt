@@ -88,7 +88,6 @@ object YoutubeHijackEngine : IHijackEngine {
                             if (window.AndTransBridge) window.AndTransBridge.onTimeUpdate(curTime);
                         }
                         
-                        // 0.1s 주기로 자막 변화도 직접 감시 (폴링 보조)
                         this.capture(false);
                     },
 
@@ -99,44 +98,18 @@ object YoutubeHijackEngine : IHijackEngine {
                     autoSelectJA() {
                         if (this.jaTrackLock) return;
                         
-                        // [V5-PRECISION-SYNC] '설정'이 포함되지 않은 순수 자막 버튼만 타겟팅
                         const ccBtn = document.querySelector('.ytp-subtitles-button') || 
                                       Array.from(document.querySelectorAll('button[aria-label*="자막"], button[aria-label*="Captions"]'))
                                            .find(b => !/설정|Settings/i.test(b.getAttribute('aria-label') || ''));
                         
-                        if (ccBtn && ccBtn.getAttribute('aria-pressed') !== 'true') {
-                            ccBtn.click();
-                            console.log(TAG + ' [LIT-UP] Pure CC Button Targeted & Clicked.');
+                        if (ccBtn) {
+                            if (ccBtn.getAttribute('aria-pressed') !== 'true') {
+                                ccBtn.click();
+                            }
+                            this.jaTrackLock = true;
+                        } else {
+                            setTimeout(() => this.autoSelectJA(), 1000);
                         }
-
-                        const sets = document.querySelector('.ytp-settings-button') || 
-                                     document.querySelector('button[aria-label*="설정"]') || 
-                                     document.querySelector('button[aria-label*="Settings"]');
-                        
-                        // 설정 버튼이 없으면 1.2초 뒤 재시도하여 유튜브 플레이어 로딩 기다림
-                        if (!sets) {
-                             setTimeout(() => this.autoSelectJA(), 1200); 
-                             return;
-                        }
-                        
-                        sets.click(); // 설정 메뉴 오픈
-                        setTimeout(() => {
-                            const items = Array.from(document.querySelectorAll('.ytp-menuitem, .yt-spec-button-shape-next'));
-                            const subMenu = items.find(i => /자막|Subtitles/i.test(i.innerText));
-                            if (subMenu) {
-                                subMenu.click();
-                                setTimeout(() => {
-                                    const tracks = Array.from(document.querySelectorAll('.ytp-menuitem, .yt-spec-button-shape-next'));
-                                    const target = tracks.find(t => /일본어|Japanese|ja/i.test(t.innerText) && !/자동|auto/i.test(t.innerText));
-                                    if (target) {
-                                        target.click(); // [SUCCESS] 수동 일본어 트랙 선택
-                                        this.jaTrackLock = true;
-                                        console.log(TAG + ' [LIT-UP] Success: Manual Japanese track locked.');
-                                    }
-                                    sets.click(); // 메뉴 닫기
-                                }, 400);
-                            } else sets.click();
-                        }, 400);
                     },
 
                     capture(force) {
