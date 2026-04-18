@@ -54,9 +54,9 @@ class WordsAdapter(
 
         fun bind(entity: com.viitor.data.local.VocabularyEntity, position: Int) {
             tvWord.text = entity.word
-            tvMeaning.text = entity.translated ?: "의미를 확인하려면 클릭하세요"
+            tvMeaning.text = entity.tras2layer ?: "의미를 확인하려면 클릭하세요"
             
-            val hasContext = !entity.contextText.isNullOrEmpty()
+            val hasContext = !entity.origin1layer.isNullOrEmpty()
             llToggle.visibility = if (hasContext) View.VISIBLE else View.GONE
             
             // [ACCORDION-LOGIC] 확장 상태에 따른 UI 분기
@@ -65,7 +65,7 @@ class WordsAdapter(
             ivChevron.rotation = if (isExpanded) 180f else 0f
             
             if (hasContext) {
-                tvContext.text = entity.contextText
+                tvContext.text = entity.origin1layer
                 
                 llToggle.setOnClickListener {
                     if (expandedPositions.contains(position)) {

@@ -44,7 +44,7 @@ object TwitchHijackEngine : IHijackEngine {
                     }
                     lastText = fullText;
                     
-                    const payload = JSON.stringify({ anchorTimeMs: aTime, originJpText: fullText });
+                    const payload = JSON.stringify({ anchorTimeMs: aTime, origin1layer: fullText });
                     if (window.AndTransBridge && fullText) {
                         AndTransBridge.onSubtitleExtracted(payload);
                     }

@@ -48,27 +48,27 @@ class SharedSyncViewModel(application: Application) : AndroidViewModel(applicati
 
     fun updateTranslationColor(color: Int) {
         _translationColor.value = color
-        com.viitor.pipeline.core.GlobalSubtitleRelay.currentTranslationColor = color
+        com.viitor.pipeline.core.GlobalSubtitleRelay.currentTras2LayerColor = color
     }
 
     /** [SCRIPT-ACCRUAL] 새로운 자막 데이터 누적 및 원자적(Line-by-line) 중복 필터링 */
     fun appendScript(data: com.viitor.pipeline.core.SubtitleData) {
-        if (data.original.isBlank()) return
+        if (data.origin1layer.isBlank()) return
         
         val current = _liveScriptList.value.toMutableList()
         
         // [LINE-ATOMIZATION] 통째로 들어온 자막을 실제 문장 단위로 분해
-        val incomingLines = data.original.split("\n").filter { it.isNotBlank() }
-        val incomingTranslatedLines = data.translated?.split("\n") ?: emptyList()
+        val incomingLines = data.origin1layer.split("\n").filter { it.isNotBlank() }
+        val incomingTranslatedLines = data.tras2layer?.split("\n") ?: emptyList()
         
         var modified = false
         
         incomingLines.forEachIndexed { index, lineText ->
             if (current.isEmpty()) {
                 current.add(com.viitor.pipeline.core.SubtitleData(
-                    original = lineText,
-                    translated = incomingTranslatedLines.getOrNull(index),
-                    pronunciation = null,
+                    origin1layer = lineText,
+                    tras2layer = incomingTranslatedLines.getOrNull(index),
+                    pron3layer = null,
                     anchorTimeMs = data.anchorTimeMs
                 ))
                 modified = true
@@ -76,21 +76,21 @@ class SharedSyncViewModel(application: Application) : AndroidViewModel(applicati
                 val last = current.last()
                 
                 // 1. 완전 일치 또는 포함 관계 (업데이트/무시)
-                if (lineText == last.original) return@forEachIndexed
+                if (lineText == last.origin1layer) return@forEachIndexed
                 
-                if (lineText.startsWith(last.original) || (last.original.length > 3 && lineText.contains(last.original))) {
+                if (lineText.startsWith(last.origin1layer) || (last.origin1layer.length > 3 && lineText.contains(last.origin1layer))) {
                     // 더 정보가 많은(긴) 문장으로 덮어쓰기
                     current[current.size - 1] = last.copy(
-                        original = lineText,
-                        translated = incomingTranslatedLines.getOrNull(index) ?: last.translated
+                        origin1layer = lineText,
+                        tras2layer = incomingTranslatedLines.getOrNull(index) ?: last.tras2layer
                     )
                     modified = true
-                } else if (!last.original.startsWith(lineText)) {
+                } else if (!last.origin1layer.startsWith(lineText)) {
                     // 2. 완전히 새로운 문장 (단, 기존 문장의 과거 조각이 아닐 때만 추가)
                     current.add(com.viitor.pipeline.core.SubtitleData(
-                        original = lineText,
-                        translated = incomingTranslatedLines.getOrNull(index),
-                        pronunciation = null,
+                        origin1layer = lineText,
+                        tras2layer = incomingTranslatedLines.getOrNull(index),
+                        pron3layer = null,
                         anchorTimeMs = data.anchorTimeMs
                     ))
                     modified = true
@@ -104,10 +104,10 @@ class SharedSyncViewModel(application: Application) : AndroidViewModel(applicati
     }
 
     /** [WORD-PERSISTENCE] 단어 영구 저장 (Room DB) */
-    fun saveWord(word: String, translated: String? = null, anchorTimeMs: Long = 0L) {
+    fun saveWord(word: String, tras2layer: String? = null, anchorTimeMs: Long = 0L) {
         if (word.isBlank()) return
         viewModelScope.launch {
-            vocabularyDao.insertWord(VocabularyEntity(word = word, translated = translated, contextText = null, anchorTimeMs = anchorTimeMs))
+            vocabularyDao.insertWord(VocabularyEntity(word = word, tras2layer = tras2layer, origin1layer = null, anchorTimeMs = anchorTimeMs))
         }
     }
 

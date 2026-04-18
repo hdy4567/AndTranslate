@@ -42,7 +42,6 @@ object YoutubeHijackEngine : IHijackEngine {
                         window.andTransIntervalId = setInterval(() => {
                             try { this.tick(); } catch(e) { console.error(TAG + ' Tick Error: ' + e); }
                         }, 100);
-                        
                         this.setupObserver();
                         this.bindVideoEvents();
                         console.log(TAG + ' Engine READY.');
@@ -63,9 +62,18 @@ object YoutubeHijackEngine : IHijackEngine {
 
                         // URL 및 광고 전환 감지
                         if (this.lastUrl !== location.href) {
-                            console.log(TAG + ' URL Shift detected: ' + location.href);
+                            console.log(TAG + ' [FLUSH] URL Shift detected: ' + location.href);
                             this.lastUrl = location.href;
                             this.jaTrackLock = false;
+
+                            // [BRIDGE-SIGNAL] 네이티브에 비디오 변경 알림 (버퍼 리셋 트리거)
+                            try {
+                                const vId = new URL(location.href).searchParams.get('v');
+                                if (vId && window.AndTransBridge && window.AndTransBridge.onVideoDetected) {
+                                    window.AndTransBridge.onVideoDetected(vId);
+                                }
+                            } catch(e) {}
+                            
                             this.enforceCC();
                         }
 
@@ -105,10 +113,12 @@ object YoutubeHijackEngine : IHijackEngine {
                                 subMenu.click();
                                 setTimeout(() => {
                                     const tracks = Array.from(document.querySelectorAll('.ytp-menuitem'));
-                                    // 정밀 매칭: 일본어[1] 또는 Japanese 수동 트랙 우선 선택
+                                    // 정밀 매칭: 일본어[1] 또는 Japanese 수동 트랙 우선 선택 (자동 생성 트랙 엄격 배제)
                                     const target = tracks.find(t => 
                                         (/일본어|Japanese|ja/i.test(t.innerText)) && 
-                                        (!t.innerText.includes('자동') && !t.innerText.includes('Auto'))
+                                        (!t.innerText.includes('자동')) && 
+                                        (!t.innerText.includes('generated')) &&
+                                        (!t.innerText.includes('Auto'))
                                     );
                                     if (target) {
                                         console.log(TAG + ' Targeted Japanese track found: ' + target.innerText);
@@ -134,7 +144,7 @@ object YoutubeHijackEngine : IHijackEngine {
                                 const video = document.querySelector('video');
                                 const aTime = video ? Math.floor(video.currentTime * 1000) : 0;
                                 
-                                const payload = JSON.stringify({ anchorTimeMs: aTime, originJpText: text });
+                                const payload = JSON.stringify({ anchorTimeMs: aTime, origin1layer: text });
                                 console.log(TAG + ' [HIJACK] Captured: ' + text.substring(0, 20));
 
                                 // [CHUNK-RELAY] 7000자 단위 청킹 스트림 전송

@@ -11,5 +11,8 @@ interface IYoutubeJsBridge {
 
     @JavascriptInterface
     fun onTimeUpdate(timeMs: Long)
+
+    @JavascriptInterface
+    fun onVideoDetected(videoId: String)
 }
 

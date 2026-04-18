@@ -80,7 +80,7 @@ class WordsFragment : Fragment() {
         fun loadWord(idx: Int) {
             val word = words[idx]
             tvWord.text = word.word
-            tvContext.text = word.contextText ?: "이 단어가 포함된 문맥이 없습니다."
+            tvContext.text = word.origin1layer ?: "이 단어가 포함된 문맥이 없습니다."
             tvMeaning.text = "[ ??? ]"
             tvMeaning.setTextColor(android.graphics.Color.parseColor("#44FFFFFF"))
             canvas.clear()
@@ -96,7 +96,7 @@ class WordsFragment : Fragment() {
             isRevealed = !isRevealed
             
             if (isRevealed) {
-                tvMeaning.text = word.translated ?: "의미 없음"
+                tvMeaning.text = word.tras2layer ?: "의미 없음"
                 tvMeaning.setTextColor(android.graphics.Color.WHITE)
             } else {
                 tvMeaning.text = "[ ??? ]"

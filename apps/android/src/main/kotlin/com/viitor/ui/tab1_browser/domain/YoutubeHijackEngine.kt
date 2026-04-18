@@ -72,7 +72,7 @@ object YoutubeHijackEngine {
 
                         let payload = {
                             anchorTimeMs: aTime,
-                            originJpText: fullText
+                            origin1layer: fullText
                         };
                         
                         let jsonStr = JSON.stringify(payload);

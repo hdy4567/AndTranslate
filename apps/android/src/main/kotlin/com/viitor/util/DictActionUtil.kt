@@ -28,14 +28,14 @@ object DictActionUtil {
     }
 
     /** 💾 3번 탭(단어장) 저장 로직 (Global Sync) */
-    fun saveToVault(context: Context, word: String, translated: String? = null, contextText: String? = null, anchorTimeMs: Long = 0L, source: String = "Tab2_Script", videoId: String? = null) {
+    fun saveToVault(context: Context, word: String, tras2layer: String? = null, origin1layer: String? = null, anchorTimeMs: Long = 0L, source: String = "Tab2_Script", videoId: String? = null) {
         kotlinx.coroutines.GlobalScope.launch(kotlinx.coroutines.Dispatchers.IO) {
             try {
                 val db = com.viitor.data.local.ViitorLocalDatabase.getDatabase(context)
                 val entity = com.viitor.data.local.VocabularyEntity(
                     word = word,
-                    translated = translated,
-                    contextText = contextText, 
+                    tras2layer = tras2layer,
+                    origin1layer = origin1layer, 
                     anchorTimeMs = anchorTimeMs,
                     source = source,
                     videoId = videoId

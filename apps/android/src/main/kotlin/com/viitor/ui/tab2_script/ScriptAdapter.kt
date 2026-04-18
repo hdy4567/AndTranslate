@@ -8,6 +8,8 @@ import android.view.ViewGroup
 import android.widget.TextView
 import androidx.recyclerview.widget.RecyclerView
 import com.viitor.ui.tab1_browser.domain.GoogleTranslationAgent
+import androidx.lifecycle.LifecycleOwner
+import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -99,7 +101,7 @@ class ScriptAdapter(
         fun bind(line: com.viitor.pipeline.core.SubtitleData, isCurrent: Boolean) {
             // [WORD-CHIP-DECOMPOSITION] 형태소 분석 엔진 연결
             flexJp.removeAllViews()
-            val tokens = com.viitor.pipeline.core.MorphemeAgent.tokenize(line.original)
+            val tokens = com.viitor.pipeline.core.MorphemeAgent.tokenize(line.origin1layer)
             
             tokens.forEach { token ->
                 val chip = TextView(itemView.context).apply {
@@ -110,7 +112,7 @@ class ScriptAdapter(
                     
                     // [INTERACTION-GATEWAY] 단어 클릭 시 프리미엄 팝업 노출
                     setOnClickListener { 
-                        showWordActionDialog(token, line.original, line.translated, line.anchorTimeMs)
+                        showWordActionDialog(token, line.origin1layer, line.tras2layer, line.anchorTimeMs)
                     }
                 }
                 flexJp.addView(chip)
@@ -119,19 +121,21 @@ class ScriptAdapter(
             tvTime.text = formatTime(line.anchorTimeMs)
             
             // [OPTIMIZATION] 이미 번역/발음 정보가 있다면 즉시 표시
-            if (line.translated != null) {
-                tvKo.text = line.translated
+            if (line.tras2layer != null) {
+                tvKo.text = line.tras2layer
                 // [COLOR-SYNC] 오버레이 설정과 연동된 색상 적용
-                tvKo.setTextColor(com.viitor.pipeline.core.GlobalSubtitleRelay.currentTranslationColor)
+                tvKo.setTextColor(com.viitor.pipeline.core.GlobalSubtitleRelay.currentTras2LayerColor)
             } else {
                 if (tvKo.text.isEmpty() || tvKo.text == "번역을 가져오는 중...") {
                     tvKo.text = "번역 불러오는 중..."
-                    CoroutineScope(Dispatchers.IO).launch {
+                    (itemView.context as? androidx.lifecycle.LifecycleOwner)?.lifecycleScope?.launch {
                         try {
-                            val ko = translationAgent.fetchTranslation(line.original)
-                            withContext(Dispatchers.Main) { tvKo.text = ko }
+                            val agent = com.viitor.ui.tab1_browser.domain.GoogleTranslationAgent()
+                            val res = agent.fetchFullTranslation(line.origin1layer)
+                            tvKo.text = res.first
+                            line.tras2layer = res.first
                         } catch (e: Exception) {
-                            withContext(Dispatchers.Main) { tvKo.text = "(!)" }
+                            tvKo.text = "(!)"
                         }
                     }
                 }
@@ -149,13 +153,13 @@ class ScriptAdapter(
         }
 
         /** [PREMIUM-ACTION] 단어별 사전/저장/닫기 팝업 UI (Deep Black & Blue design) */
-        private fun showWordActionDialog(token: String, originalSentence: String, translatedSentence: String?, anchorTimeMs: Long) {
+        private fun showWordActionDialog(token: String, origin1layer: String, tras2layer: String?, anchorTimeMs: Long) {
             val ctx = itemView.context
             val builder = androidx.appcompat.app.AlertDialog.Builder(ctx, com.google.android.material.R.style.Theme_Material3_Dark_Dialog_Alert)
             
             builder.setTitle(token)
             // [CONTEXT-MAPPING] 별도의 단어 번역 없이, 이미 존재하는 문장 해석본을 문맥으로 보여줌 (최적화)
-            builder.setMessage("문맥: ${translatedSentence ?: "번역 없음"}\n\n이 단어를 단어장에 보관하시겠습니까?")
+            builder.setMessage("문맥: ${tras2layer ?: "번역 없음"}\n\n이 단어를 단어장에 보관하시겠습니까?")
             
             builder.setPositiveButton("네이버 사전") { _, _ ->
                 com.viitor.util.DictActionUtil.openNaverDict(ctx, token)
@@ -164,8 +168,8 @@ class ScriptAdapter(
                 com.viitor.util.DictActionUtil.saveToVault(
                     ctx, 
                     token, 
-                    translatedSentence, // 문장 해석본을 단어의 의미로 매핑
-                    originalSentence, 
+                    tras2layer, // 문장 해석본을 단어의 의미로 매핑
+                    origin1layer, 
                     anchorTimeMs,
                     "Tab2_Script",
                     currentVideoId

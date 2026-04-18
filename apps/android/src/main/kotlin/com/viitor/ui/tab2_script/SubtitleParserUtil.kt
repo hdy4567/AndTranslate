@@ -57,7 +57,7 @@ object SubtitleParserUtil {
                                     resultList.add(SubtitleData(
                                         videoId = "UNKNOWN",
                                         anchorTimeMs = startTimeMs + (index * 100), // 미세 오프셋으로 순서 보장
-                                        original = cleanS
+                                        origin1layer = cleanS
                                     ))
                                 }
                             }

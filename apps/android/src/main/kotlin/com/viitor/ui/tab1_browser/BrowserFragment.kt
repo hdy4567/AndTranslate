@@ -237,16 +237,21 @@ class BrowserFragment : Fragment() {
     private fun observeViewModel() {
         val sharedViewModel: SharedSyncViewModel by activityViewModels() // [CROSS-TAB]
         
+        // [VIDEO-CHANGE-SYNC] 자동 감지된 비디오 정보를 공유 뷰모델에 전파하여 타 탭 상태 동기화
+        viewModel.onVideoDetected = { videoId ->
+            sharedViewModel.broadcastVideoId(videoId)
+        }
+
         viewLifecycleOwner.lifecycleScope.launch {
             viewModel.overlayState.collectLatest { model ->
-                if (model.payload.originJpText.isBlank()) return@collectLatest
+                if (model.payload.origin1layer.isBlank()) return@collectLatest
                 
                 // [SCRIPT-ACCRUAL] 번역된 데이터를 공유 뷰모델 리스트에 실시간 누적 (2탭 동화)
                 sharedViewModel.appendScript(
                     com.viitor.pipeline.core.SubtitleData(
-                        original = model.payload.originJpText,
-                        translated = model.translateKo,
-                        pronunciation = model.pronunciationKo,
+                        origin1layer = model.payload.origin1layer,
+                        tras2layer = model.tras2layer,
+                        pron3layer = model.pron3layer,
                         anchorTimeMs = model.payload.anchorTimeMs // 보정된 시간 전달
                     )
                 )

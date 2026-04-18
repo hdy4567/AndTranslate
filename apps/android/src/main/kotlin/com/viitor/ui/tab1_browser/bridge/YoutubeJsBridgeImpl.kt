@@ -33,15 +33,21 @@ class YoutubeJsBridgeImpl(
         viewModel.updateCurrentTime(timeMs)
     }
 
+    @JavascriptInterface
+    override fun onVideoDetected(videoId: String) {
+        Log.i("YoutubeJsBridge", "[JS-BRIDGE] Video Detected: $videoId")
+        viewModel.onVideoChanged(videoId)
+    }
+
     private fun processPayload(jsonPayload: String) {
         try {
             val json = JSONObject(jsonPayload)
             val anchorTimeMs = json.optLong("anchorTimeMs", 0L)
-            val originJpText = json.optString("originJpText", "")
+            val origin1layer = json.optString("origin1layer", "")
 
-            if (originJpText.isNotBlank()) {
-                Log.d("YoutubeJsBridge", "[JS-BRIDGE] Captured Subtitle Stream: $originJpText")
-                val payload = SubtitlePayload(anchorTimeMs, originJpText)
+            if (origin1layer.isNotBlank()) {
+                Log.d("YoutubeJsBridge", "[JS-BRIDGE] Captured Subtitle Stream: $origin1layer")
+                val payload = SubtitlePayload(anchorTimeMs, origin1layer)
                 viewModel.processExtractedSubtitle(payload)
             }
         } catch (e: Exception) {

@@ -55,14 +55,14 @@ class SmartSubtitleAgent {
             if (results.isNotEmpty()) {
                 Log.i(TAG, "[STREAM] Extraction successful, relaying to overlay.")
                 
-                val topResult = results[0].original
+                val topResult = results[0].origin1layer
                 
                 // Simulate 3-layer data
                 val mockData = SubtitleData(
                     videoId = sourceId,
-                    original = topResult,
-                    translated = "[번역] " + topResult,
-                    pronunciation = "[발음] " + topResult,
+                    origin1layer = topResult,
+                    tras2layer = "[번역] " + topResult,
+                    pron3layer = "[발음] " + topResult,
                     anchorTimeMs = System.currentTimeMillis()
                 )
                 

@@ -44,9 +44,9 @@ class SubtitleCaptureService : Service() {
     private val mainHandler = Handler(Looper.getMainLooper())
 
     // UI Components
-    private lateinit var tvOriginal: TextView
-    private lateinit var tvTranslated: TextView
-    private lateinit var tvPronunciation: TextView
+    private lateinit var origin1layerView: TextView
+    private lateinit var tras2layerView: TextView
+    private lateinit var pron3layerView: TextView
 
     override fun onCreate() {
         super.onCreate()
@@ -59,11 +59,11 @@ class SubtitleCaptureService : Service() {
         val streamListener: (SubtitleData) -> Unit = { data ->
             mainHandler.post {
                 // [5.RELAY] 데이터 수신 확인 (GlobalSubtitleRelay 또는 Agent)
-                Log.i(TAG, "[5.RELAY] Received: original=${data.original.take(20)}, translated=${data.translated?.take(20)}")
+                Log.i(TAG, "[5.RELAY] Received: origin1layer=${data.origin1layer.take(20)}, tras2layer=${data.tras2layer?.take(20)}")
                 // [6.OVERLAY] UI 반영
-                tvOriginal.text = data.original
-                tvTranslated.text = data.translated
-                tvPronunciation.text = data.pronunciation
+                origin1layerView.text = data.origin1layer
+                tras2layerView.text = data.tras2layer
+                pron3layerView.text = data.pron3layer
                 Log.d(TAG, "[6.OVERLAY] UI updated.")
             }
         }
@@ -187,9 +187,9 @@ class SubtitleCaptureService : Service() {
         btnHide.alpha = 0.6f
         
         val btnTrans = createMiniButton("T", Color.parseColor("#FFD54F")) { 
-            val newState = !com.viitor.pipeline.core.GlobalSubtitleRelay.isPronunciationEnabled
-            com.viitor.pipeline.core.GlobalSubtitleRelay.isPronunciationEnabled = newState
-            tvPronunciation.visibility = if (newState) View.VISIBLE else View.GONE
+            val newState = !com.viitor.pipeline.core.GlobalSubtitleRelay.isPron3LayerEnabled
+            com.viitor.pipeline.core.GlobalSubtitleRelay.isPron3LayerEnabled = newState
+            pron3layerView.visibility = if (newState) View.VISIBLE else View.GONE
             Log.i(TAG, "[SYNC] Pronunciation Enabled: $newState")
         }
 
@@ -272,42 +272,42 @@ class SubtitleCaptureService : Service() {
         }
 
         // Subtitle Views (Styling V5: White Bold Original & Aura Pink Translation)
-        tvOriginal = createSubtitleTextView(18f, Color.WHITE).apply {
+        origin1layerView = createSubtitleTextView(18f, Color.WHITE).apply {
             typeface = android.graphics.Typeface.create(android.graphics.Typeface.SANS_SERIF, android.graphics.Typeface.BOLD)
         }
-        tvTranslated = createSubtitleTextView(18f, Color.parseColor("#FF4081")).apply {
+        tras2layerView = createSubtitleTextView(18f, Color.parseColor("#FF4081")).apply {
             typeface = android.graphics.Typeface.create(android.graphics.Typeface.SANS_SERIF, android.graphics.Typeface.BOLD)
         }
-        tvPronunciation = createSubtitleTextView(16f, Color.parseColor("#FFD54F"))
-        subtitleContainer.addView(tvOriginal)
-        subtitleContainer.addView(tvTranslated)
-        subtitleContainer.addView(tvPronunciation)
+        pron3layerView = createSubtitleTextView(16f, Color.parseColor("#FFD54F"))
+        subtitleContainer.addView(origin1layerView)
+        subtitleContainer.addView(tras2layerView)
+        subtitleContainer.addView(pron3layerView)
 
         // Settings View (Switch) - [REPAIR] 테마 에러 방지를 위해 순정 Switch 부품 사용
         val switchPron = android.widget.Switch(this).apply {
             text = "한국식 발음 표시"
             setTextColor(Color.WHITE)
-            isChecked = com.viitor.pipeline.core.GlobalSubtitleRelay.isPronunciationEnabled
+            isChecked = com.viitor.pipeline.core.GlobalSubtitleRelay.isPron3LayerEnabled
             setOnCheckedChangeListener { _, isChecked ->
-                tvPronunciation.visibility = if (isChecked) View.VISIBLE else View.GONE
-                com.viitor.pipeline.core.GlobalSubtitleRelay.isPronunciationEnabled = isChecked
+                pron3layerView.visibility = if (isChecked) View.VISIBLE else View.GONE
+                com.viitor.pipeline.core.GlobalSubtitleRelay.isPron3LayerEnabled = isChecked
             }
         }
         
         val btnColorPnk = createMiniButton("COLOR-PINK", Color.parseColor("#FF4081")) {
             val color = Color.parseColor("#FF4081")
-            tvTranslated.setTextColor(color)
-            com.viitor.pipeline.core.GlobalSubtitleRelay.currentTranslationColor = color
+            tras2layerView.setTextColor(color)
+            com.viitor.pipeline.core.GlobalSubtitleRelay.currentTras2LayerColor = color
         }
         val btnColorWht = createMiniButton("COLOR-WHITE", Color.WHITE) {
             val color = Color.WHITE
-            tvTranslated.setTextColor(color)
-            com.viitor.pipeline.core.GlobalSubtitleRelay.currentTranslationColor = color
+            tras2layerView.setTextColor(color)
+            com.viitor.pipeline.core.GlobalSubtitleRelay.currentTras2LayerColor = color
         }
         val btnColorPnk2 = createMiniButton("ff4081", Color.parseColor("#FF4081")) {
             val color = Color.parseColor("#FF4081")
-            tvTranslated.setTextColor(color)
-            com.viitor.pipeline.core.GlobalSubtitleRelay.currentTranslationColor = color
+            tras2layerView.setTextColor(color)
+            com.viitor.pipeline.core.GlobalSubtitleRelay.currentTras2LayerColor = color
         }
         
         val colorLayout = LinearLayout(this).apply {
