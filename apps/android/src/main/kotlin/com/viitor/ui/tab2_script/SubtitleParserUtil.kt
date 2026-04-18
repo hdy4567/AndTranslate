@@ -18,7 +18,9 @@ object SubtitleParserUtil {
         try {
             val url = URL(timedTextUrl + "&fmt=json3") // JSON3 포맷 강제
             val connection = url.openConnection() as HttpURLConnection
-            connection.requestMethod = "GET"
+            connection.connectTimeout = 5000
+            connection.readTimeout = 5000
+
             if (connection.responseCode == HttpURLConnection.HTTP_OK) {
                 val inputStr = connection.inputStream.bufferedReader().use { it.readText() }
                 return@withContext parseJson3Content(inputStr)
@@ -29,7 +31,7 @@ object SubtitleParserUtil {
         return@withContext emptyList()
     }
 
-    /** [CORE-PARSER] JS 엔진에서 공수해온 7000자 벌크 JSON 데이터를 고속 파싱 */
+    /** [CORE-PARSER] JS 엔진(Bulk Fetch) 또는 네트워크에서 온 JSON3 데이터를 공통 파싱 */
     fun parseJson3Content(jsonStr: String): List<SubtitleData> {
         val resultList = mutableListOf<SubtitleData>()
         try {
@@ -39,8 +41,8 @@ object SubtitleParserUtil {
             for (i in 0 until eventsArray.length()) {
                 val eventObj = eventsArray.getJSONObject(i)
                 val startTimeMs = eventObj.optLong("tStartMs", 0L)
-                
                 val segsArray = eventObj.optJSONArray("segs")
+
                 if (segsArray != null) {
                     val segBuilder = StringBuilder()
                     for (j in 0 until segsArray.length()) {
@@ -69,7 +71,7 @@ object SubtitleParserUtil {
                 }
             }
         } catch (e: Exception) {
-            Log.e("SubtitleParserUtil", "Bulk Parse Error", e)
+            Log.e("SubtitleParserUtil", "JSON3 Parse Error", e)
         }
         return resultList
     }
