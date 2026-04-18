@@ -98,17 +98,22 @@ object YoutubeHijackEngine : IHijackEngine {
                     autoSelectJA() {
                         if (this.jaTrackLock) return;
                         
+                        // [V5-SMART-CC] 설정 메뉴를 완전히 배제한 배후 타겟팅
                         const ccBtn = document.querySelector('.ytp-subtitles-button') || 
                                       Array.from(document.querySelectorAll('button[aria-label*="자막"], button[aria-label*="Captions"]'))
                                            .find(b => !/설정|Settings/i.test(b.getAttribute('aria-label') || ''));
                         
                         if (ccBtn) {
                             if (ccBtn.getAttribute('aria-pressed') !== 'true') {
+                                // 단순 클릭이 아닌 배후 이벤트(Pointer/Mouse) 동시 발송
+                                console.log(TAG + ' [DIAGNOSTIC] CC Ignited (Direct Match)');
+                                ccBtn.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
+                                ccBtn.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
                                 ccBtn.click();
                             }
                             this.jaTrackLock = true;
                         } else {
-                            setTimeout(() => this.autoSelectJA(), 1000);
+                            setTimeout(() => this.autoSelectJA(), 800);
                         }
                     },
 
