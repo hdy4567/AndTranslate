@@ -57,8 +57,12 @@ class YoutubeViewModel : ViewModel() {
         // [HYPER-PASS] 이미 전체 대본(Registry)에 번역본이 있다면 무거운 API 루프 없이 즉시 투출
         val cached = com.viitor.pipeline.core.GlobalSubtitleRelay.findTranscriptMatch(payload.anchorTimeMs)
         if (cached != null && !cached.tras2layer.isNullOrBlank()) {
+            // [REDUNDANCY-GUARD] 방금 보낸 동일 시간대의 자막이면 중복 사출 차단
+            if (lastRelayedTimeMs == cached.anchorTimeMs) return 
+            
+            lastRelayedTimeMs = cached.anchorTimeMs
             com.viitor.pipeline.core.GlobalSubtitleRelay.relay(cached)
-            Log.d("YoutubeViewModel", "[HYPER-PASS] Instant Relay from Registry for Time: ${payload.anchorTimeMs}")
+            Log.d("YoutubeViewModel", "[HYPER-PASS] Instant Relay for Time: ${payload.anchorTimeMs}")
             return
         }
 
@@ -314,14 +318,17 @@ class YoutubeViewModel : ViewModel() {
         _currentTimeMs.value = timeMs
     }
 
-    private var lastProcessedVideoId = ""
+    private var lastProcessedVideoId: String? = null
+    private var lastRelayedTimeMs: Long = -1L // 중복 사출 방지용
 
     fun onVideoChanged(videoId: String) {
         if (lastProcessedVideoId == videoId) {
-            Log.d("YoutubeViewModel", "[SKIP-FLUSH] Video ID identical, ignoring redundant flush.")
+            Log.d("YoutubeViewModel", "[SKIP-FLUSH] Same Video ID: $videoId")
             return
         }
+        
         lastProcessedVideoId = videoId
+        lastRelayedTimeMs = -1L // 영상 변경 시 가드 리셋
         
         viewModelScope.launch {
             bufferMutex.withLock {
