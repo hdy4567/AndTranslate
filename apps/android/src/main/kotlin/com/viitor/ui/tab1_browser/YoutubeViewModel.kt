@@ -47,30 +47,24 @@ class YoutubeViewModel : ViewModel() {
     fun processExtractedSubtitle(payload: SubtitlePayload) {
         if (!isEngineAlive) return
 
-        // [NOISE-FILTER] '자동 생성됨' 등 저품질 자막 텍스트 원천 차단
+        // [NOISE-CANCELING] '자동 생성됨' 등 저품질 자막 텍스트 원천 차단
         val raw = payload.origin1layer.trim()
-        if (raw.contains("(자동 생성됨)") || raw.contains("(auto-generated)")) return
-
-        // [UNIFIED-REDUNDANCY-GUARD] 텍스트와 시간이 직전과 동일하면 즉시 질식 (0.1s 중복 유입 방지)
-        val isSameSignal = (lastOrigin1L == raw && Math.abs(payload.anchorTimeMs - lastAnchorTime) < 500)
-        if (isSameSignal && lastRelayedTimeMs != -1L) return
+        if (raw.contains("(자동 생성됨)") || raw.contains("(auto-generated)")) {
+            Log.w("YoutubeViewModel", "[NOISE-FILTER] Discarded auto-generated label text: $raw")
+            return
+        }
 
         // [HYPER-PASS] 이미 전체 대본(Registry)에 번역본이 있다면 무거운 API 루프 없이 즉시 투출
         val cached = com.viitor.pipeline.core.GlobalSubtitleRelay.findTranscriptMatch(payload.anchorTimeMs)
         if (cached != null && !cached.tras2layer.isNullOrBlank()) {
+            // [REDUNDANCY-GUARD] 방금 보낸 동일 시간대의 자막이면 중복 사출 차단
             if (lastRelayedTimeMs == cached.anchorTimeMs) return 
             
-            lastOrigin1L = raw
-            lastAnchorTime = payload.anchorTimeMs
             lastRelayedTimeMs = cached.anchorTimeMs
             com.viitor.pipeline.core.GlobalSubtitleRelay.relay(cached)
-            Log.d("YoutubeViewModel", "[HYPER-PASS] Instant Relay: $raw")
+            Log.d("YoutubeViewModel", "[HYPER-PASS] Instant Relay for Time: ${payload.anchorTimeMs}")
             return
         }
-
-        // 상태값 선행 업데이트 (Gate에서 즉시 락을 걸기 위함)
-        lastOrigin1L = raw
-        lastAnchorTime = payload.anchorTimeMs
 
         viewModelScope.launch(Dispatchers.IO) {
             bufferMutex.withLock {
@@ -91,6 +85,11 @@ class YoutubeViewModel : ViewModel() {
                     if (isStale) return@launch // 말이 끝났으면 처리 중단
                 }
 
+                if (lastOrigin1L == payload.origin1layer && !isTimeJump) return@launch
+                
+                lastOrigin1L = payload.origin1layer
+                lastAnchorTime = payload.anchorTimeMs
+                
                 // [SYNC-FIRST] ID 고정 없이 원본 타임스탬프 유지
                 if (subtitleBuffer.isNotEmpty() && payload.origin1layer.startsWith(subtitleBuffer.last().origin1layer)) {
                     subtitleBuffer[subtitleBuffer.size - 1] = payload
@@ -105,17 +104,17 @@ class YoutubeViewModel : ViewModel() {
                 val fullRelayPron = StringBuilder()
 
                 subtitleBuffer.forEachIndexed { index, sb ->
-                    val cachedTrans = fullTranslationCache[sb.anchorTimeMs]
-                    if (cachedTrans != null) {
+                    val cached = fullTranslationCache[sb.anchorTimeMs]
+                    if (cached != null) {
                         if (index == subtitleBuffer.size - 1) {
                             // 마지막 문장: 타이핑 진행률 계산
-                            val progress = (sb.origin1layer.length.toFloat() / cachedTrans.origin1layer.length.toFloat()).coerceIn(0f, 1f)
-                            fullRelayKo.append(cachedTrans.tras2layer?.let { it.substring(0, (it.length * progress).toInt()) } ?: "")
-                            fullRelayPron.append(cachedTrans.pron3layer?.let { it.substring(0, (it.length * progress).toInt()) } ?: "")
+                            val progress = (sb.origin1layer.length.toFloat() / cached.origin1layer.length.toFloat()).coerceIn(0f, 1f)
+                            fullRelayKo.append(cached.tras2layer?.let { it.substring(0, (it.length * progress).toInt()) } ?: "")
+                            fullRelayPron.append(cached.pron3layer?.let { it.substring(0, (it.length * progress).toInt()) } ?: "")
                         } else {
                             // 이전 문장들: 전량
-                            fullRelayKo.append(cachedTrans.tras2layer).append("\n")
-                            fullRelayPron.append(cachedTrans.pron3layer).append("\n")
+                            fullRelayKo.append(cached.tras2layer).append("\n")
+                            fullRelayPron.append(cached.pron3layer).append("\n")
                         }
                     }
                 }
@@ -133,7 +132,7 @@ class YoutubeViewModel : ViewModel() {
                 )
             }
 
-            // 배치 루프가 작동 중이지 않다면 시작 (1초 주기)
+            // 배치 루프가 작동 중이지 않다면 시작 (2초 주기)
             if (batchJob == null || !batchJob!!.isActive) {
                 startBatchLoop()
             }

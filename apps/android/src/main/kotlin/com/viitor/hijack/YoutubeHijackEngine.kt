@@ -98,7 +98,9 @@ object YoutubeHijackEngine : IHijackEngine {
                     },
 
                     enforceCC() {
-                        setTimeout(() => this.autoSelectJA(), 800);
+                        // [FAST-TRACK] 키보드 단축키 'c' 시뮬레이션으로 즉시 활성화 시도
+                        document.dispatchEvent(new KeyboardEvent('keydown', { 'keyCode': 67, 'which': 67 }));
+                        setTimeout(() => this.autoSelectJA(), 500);
                     },
 
                     autoSelectJA() {
@@ -179,7 +181,7 @@ object YoutubeHijackEngine : IHijackEngine {
                                 lastUrl = currentUrl;
                                 this.lastText = ''; // URL 변경 시 중복 체크 리셋
                                 this.capture(true);
-                                this.autoTrack(); // 신규 영상에 대한 트랙 재탐색
+                                this.autoSelectJA(); // 신규 영상에 대한 트랙 재탐색
                                 return;
                             }
                             this.capture(false);
