@@ -103,26 +103,27 @@ object YoutubeHijackEngine : IHijackEngine {
  
                     autoSelectJA() {
                         if (this.jaTrackLock) return;
-                        // 데스크톱(.ytp-settings-button) 및 모바일(aria-label 기반) 통합 탐색
+                        
+                        // [V5-FAST-SYNC] 자막 버튼 즉시 클릭 (aria-label 기반으로 모바일/데스크톱 모두 대응)
+                        const ccBtn = document.querySelector('.ytp-subtitles-button') || 
+                                      document.querySelector('button[aria-label*="자막"]') || 
+                                      document.querySelector('button[aria-label*="Captions"]');
+                        
+                        if (ccBtn && ccBtn.getAttribute('aria-pressed') !== 'true') {
+                            ccBtn.click();
+                            console.log(TAG + ' [LIT-UP] CC Activated via Direct Click.');
+                        }
+
+                        // 정밀 트랙(일본어 수동) 선택이 필요한 경우에만 아래 로직 작동
                         const sets = document.querySelector('.ytp-settings-button') || 
                                      document.querySelector('button[aria-label*="설정"]') || 
                                      document.querySelector('button[aria-label*="Settings"]');
                         
-                        // [FAST-MOBILE-CC] 설정 메뉴 안 들어가도 자막 버튼이 밖에 있으면 즉시 클릭
-                        const directCC = document.querySelector('.ytp-subtitles-button') || 
-                                         document.querySelector('button[aria-label*="자막"]') || 
-                                         document.querySelector('button[aria-label*="Captions"]');
-                        if (directCC && directCC.getAttribute('aria-pressed') !== 'true') {
-                            console.log(TAG + ' [LIT-UP] Direct CC Clicked.');
-                            directCC.click();
-                        }
-
                         if (!sets) {
-                             setTimeout(() => this.autoSelectJA(), 200);
+                             setTimeout(() => this.autoSelectJA(), 300); // 버튼 나타날 때까지 폴링
                              return;
                         }
                         
-                        console.log(TAG + ' [LIT-UP] CC Engine Activated. Traversing...');
                         sets.click();
                         setTimeout(() => {
                             const items = Array.from(document.querySelectorAll('.ytp-menuitem, .yt-spec-button-shape-next'));
@@ -133,9 +134,9 @@ object YoutubeHijackEngine : IHijackEngine {
                                     const tracks = Array.from(document.querySelectorAll('.ytp-menuitem, .yt-spec-button-shape-next'));
                                     const target = tracks.find(t => /일본어|Japanese|ja/i.test(t.innerText) && !/자동|auto/i.test(t.innerText));
                                     if (target) {
-                                        console.log(TAG + ' [LIT-UP] Targeted track selected.');
                                         target.click();
                                         this.jaTrackLock = true;
+                                        console.log(TAG + ' [LIT-UP] Japanese Track Locked.');
                                     }
                                     sets.click();
                                 }, 300);
