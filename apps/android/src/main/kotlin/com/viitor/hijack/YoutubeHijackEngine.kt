@@ -71,6 +71,7 @@ object YoutubeHijackEngine : IHijackEngine {
                                 const vId = new URL(location.href).searchParams.get('v');
                                 if (vId && window.AndTransBridge && window.AndTransBridge.onVideoDetected) {
                                     window.AndTransBridge.onVideoDetected(vId);
+                                    this.fetchFullScript(); // [BULK-SYNC] 7000자 전체 대본 확보 시도
                                 }
                             } catch(e) {}
                             
@@ -218,6 +219,27 @@ object YoutubeHijackEngine : IHijackEngine {
                             v.play(); // 점프 후 자동 재생
                             console.log(TAG + ' Seek to ' + ms + 'ms executed.');
                         }
+                    },
+
+                    fetchFullScript() {
+                        try {
+                            const pResp = window.ytInitialPlayerResponse || (window.ytplayer && window.ytplayer.config && window.ytplayer.config.args ? JSON.parse(window.ytplayer.config.args.player_response) : null);
+                            if (!pResp || !pResp.captions) return;
+                            
+                            const tracks = pResp.captions.playerCaptionsTracklistRenderer.captionTracks;
+                            const jaTrack = tracks.find(t => t.languageCode === 'ja' || (t.vssId && t.vssId.includes('.ja')));
+                            if (jaTrack && jaTrack.baseUrl) {
+                                console.log(TAG + ' Bulk Script Target: ' + jaTrack.baseUrl);
+                                fetch(jaTrack.baseUrl + '&fmt=json3')
+                                    .then(r => r.json())
+                                    .then(data => {
+                                        if (window.AndTransBridge && window.AndTransBridge.onFullTranscriptCaptured) {
+                                            window.AndTransBridge.onFullTranscriptCaptured(JSON.stringify(data));
+                                            console.log(TAG + ' Success: 7000+ characters Bulk Pushed.');
+                                        }
+                                    }).catch(err => console.error(TAG + ' Fetch Error: ' + err));
+                            }
+                        } catch(e) { console.error(TAG + ' Bulk Prep Error: ' + e); }
                     }
                 };
 

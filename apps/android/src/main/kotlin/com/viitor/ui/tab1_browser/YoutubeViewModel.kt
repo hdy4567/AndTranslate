@@ -54,6 +54,14 @@ class YoutubeViewModel : ViewModel() {
             return
         }
 
+        // [HYPER-PASS] 이미 전체 대본(Registry)에 번역본이 있다면 무거운 API 루프 없이 즉시 투출
+        val cached = com.viitor.pipeline.core.GlobalSubtitleRelay.findTranscriptMatch(payload.anchorTimeMs)
+        if (cached != null && !cached.tras2layer.isNullOrBlank()) {
+            com.viitor.pipeline.core.GlobalSubtitleRelay.relay(cached)
+            Log.d("YoutubeViewModel", "[HYPER-PASS] Instant Relay from Registry for Time: ${payload.anchorTimeMs}")
+            return
+        }
+
         viewModelScope.launch(Dispatchers.IO) {
             bufferMutex.withLock {
                 // [FLUSH-LOGIC] 시간 점프 감지 시 버퍼 즉시 비움 (문맥 오염 방지)
