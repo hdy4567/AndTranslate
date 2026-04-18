@@ -99,14 +99,14 @@ object YoutubeHijackEngine : IHijackEngine {
                     autoSelectJA() {
                         if (this.jaTrackLock) return;
                         
-                        // [UNIFIED-CC-GATE] 자막 버튼을 정밀하게 한 번만 타격
+                        // [V5-PRECISION-SYNC] '설정'이 포함되지 않은 순수 자막 버튼만 타겟팅
                         const ccBtn = document.querySelector('.ytp-subtitles-button') || 
-                                      document.querySelector('button[aria-label*="자막"]') || 
-                                      document.querySelector('button[aria-label*="Captions"]');
+                                      Array.from(document.querySelectorAll('button[aria-label*="자막"], button[aria-label*="Captions"]'))
+                                           .find(b => !/설정|Settings/i.test(b.getAttribute('aria-label') || ''));
                         
                         if (ccBtn && ccBtn.getAttribute('aria-pressed') !== 'true') {
                             ccBtn.click();
-                            console.log(TAG + ' [LIT-UP] Initial CC Clicked.');
+                            console.log(TAG + ' [LIT-UP] Pure CC Button Targeted & Clicked.');
                         }
 
                         const sets = document.querySelector('.ytp-settings-button') || 
