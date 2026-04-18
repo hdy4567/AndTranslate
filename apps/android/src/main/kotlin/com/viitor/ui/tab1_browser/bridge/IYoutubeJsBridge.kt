@@ -14,5 +14,8 @@ interface IYoutubeJsBridge {
 
     @JavascriptInterface
     fun onVideoDetected(videoId: String)
+
+    @JavascriptInterface
+    fun onFullTranscriptCaptured(jsonContent: String)
 }
 

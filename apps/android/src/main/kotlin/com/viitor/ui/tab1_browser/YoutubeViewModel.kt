@@ -304,6 +304,12 @@ class YoutubeViewModel : ViewModel() {
         lastOrigin1L = ""
     }
 
+    fun updateManualTranscript(list: List<com.viitor.pipeline.core.SubtitleData>) {
+        com.viitor.pipeline.core.GlobalSubtitleRelay.updateTranscript(list)
+        // [AUDIT] 2탭(Script) 리스트 동기화를 위해 UI 신호 발송 가능
+        Log.i("YoutubeViewModel", "[REGISTRY-SYNC] Registry populated with ${list.size} lines in background.")
+    }
+
     fun updateCurrentTime(timeMs: Long) {
         _currentTimeMs.value = timeMs
     }
