@@ -292,6 +292,69 @@ class OverlayViewManager(private val context: Context) {
     }
 
     private fun buildSettingsContent(parent: LinearLayout) {
+        val prefs = context.getSharedPreferences("viitor_overlay_prefs", Context.MODE_PRIVATE)
+        val savedModeCode = prefs.getString("translation_mode_code", "KO_EN") ?: "KO_EN"
+        val initialMode = GlobalSubtitleRelay.TranslationMode.fromCode(savedModeCode)
+        GlobalSubtitleRelay.translationMode = initialMode
+
+        // --- 1. Translation Mode Selector (한국어 -> 영어 / 한국어 -> 일본어) ---
+        val langLabel = TextView(context).apply {
+            text = "번역 모드 설정 (Translation Mode)"
+            setTextColor(Color.WHITE)
+            textSize = 13f
+            typeface = android.graphics.Typeface.DEFAULT_BOLD
+            setPadding(0, 0, 0, 10)
+        }
+
+        val modeLayout = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(0, 0, 0, 16)
+        }
+
+        lateinit var btnKoEn: Button
+        lateinit var btnKoJa: Button
+
+        fun updateModeButtons(currentMode: GlobalSubtitleRelay.TranslationMode) {
+            if (currentMode == GlobalSubtitleRelay.TranslationMode.KO_TO_EN) {
+                btnKoEn.setTextColor(Color.parseColor("#FF4081"))
+                btnKoEn.setBackgroundColor(Color.parseColor("#44FF4081"))
+                btnKoJa.setTextColor(Color.parseColor("#888888"))
+                btnKoJa.setBackgroundColor(Color.parseColor("#22FFFFFF"))
+            } else {
+                btnKoEn.setTextColor(Color.parseColor("#888888"))
+                btnKoEn.setBackgroundColor(Color.parseColor("#22FFFFFF"))
+                btnKoJa.setTextColor(Color.parseColor("#FF4081"))
+                btnKoJa.setBackgroundColor(Color.parseColor("#44FF4081"))
+            }
+        }
+
+        btnKoEn = createMiniButton("🇰🇷 한국어 ➔ 🇺🇸 영어 (KO ➔ EN)", Color.WHITE) {
+            GlobalSubtitleRelay.translationMode = GlobalSubtitleRelay.TranslationMode.KO_TO_EN
+            prefs.edit().putString("translation_mode_code", "KO_EN").apply()
+            updateModeButtons(GlobalSubtitleRelay.TranslationMode.KO_TO_EN)
+            GlobalSubtitleRelay.requestRepair()
+            Log.i(TAG, "[MODE] Set Translation Mode to KO -> EN")
+        }.apply {
+            gravity = Gravity.START or Gravity.CENTER_VERTICAL
+            setPadding(25, 12, 25, 12)
+        }
+
+        btnKoJa = createMiniButton("🇰🇷 한국어 ➔ 🇯🇵 일본어 (KO ➔ JA)", Color.WHITE) {
+            GlobalSubtitleRelay.translationMode = GlobalSubtitleRelay.TranslationMode.KO_TO_JA
+            prefs.edit().putString("translation_mode_code", "KO_JA").apply()
+            updateModeButtons(GlobalSubtitleRelay.TranslationMode.KO_TO_JA)
+            GlobalSubtitleRelay.requestRepair()
+            Log.i(TAG, "[MODE] Set Translation Mode to KO -> JA")
+        }.apply {
+            gravity = Gravity.START or Gravity.CENTER_VERTICAL
+            setPadding(25, 12, 25, 12)
+        }
+
+        updateModeButtons(initialMode)
+        modeLayout.addView(btnKoEn)
+        modeLayout.addView(btnKoJa)
+
+        // --- 2. Pronunciation Switch ---
         val switchPron = android.widget.Switch(context).apply {
             text = "한국식 발음 표시"
             setTextColor(Color.WHITE)
@@ -302,6 +365,11 @@ class OverlayViewManager(private val context: Context) {
             }
         }
 
+        // --- 3. Subtitle Color Options ---
+        val colorLayout = LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            setPadding(0, 10, 0, 10)
+        }
         val btnColorPnk = createMiniButton("COLOR-PINK", Color.parseColor("#FF4081")) {
             val color = Color.parseColor("#FF4081")
             tras2layerView.setTextColor(color)
@@ -317,15 +385,12 @@ class OverlayViewManager(private val context: Context) {
             tras2layerView.setTextColor(color)
             GlobalSubtitleRelay.currentTras2LayerColor = color
         }
-
-        val colorLayout = LinearLayout(context).apply {
-            orientation = LinearLayout.HORIZONTAL
-            setPadding(0, 10, 0, 10)
-        }
         colorLayout.addView(btnColorPnk)
         colorLayout.addView(btnColorWht)
         colorLayout.addView(btnColorPnk2)
 
+        parent.addView(langLabel)
+        parent.addView(modeLayout)
         parent.addView(switchPron)
         parent.addView(colorLayout)
     }

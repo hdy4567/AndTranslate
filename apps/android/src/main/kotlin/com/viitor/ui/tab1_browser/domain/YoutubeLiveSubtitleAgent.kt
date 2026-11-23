@@ -58,7 +58,7 @@ class YoutubeLiveSubtitleAgent(
                 val combinedJpText = batchToProcess.joinToString("\n") { it.origin1layer }.trim()
                 
                 // 중복 번역 및 필터링 가드
-                if (combinedJpText.isBlank() || !JP_REGEX.containsMatchIn(combinedJpText)) continue
+                if (combinedJpText.isBlank() || !com.viitor.pipeline.core.GlobalSubtitleRelay.isValidSourceText(combinedJpText)) continue
                 if (lastBatchText.contains(combinedJpText) || combinedJpText.contains(lastBatchText)) continue
                 lastBatchText = combinedJpText
 
