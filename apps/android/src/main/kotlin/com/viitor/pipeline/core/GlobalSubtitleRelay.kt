@@ -294,13 +294,13 @@ object GlobalSubtitleRelay {
             val nextL1 = getUniqueFuture(2, dataL1, futureRegistryL1) { it.origin1layer }
             val finalL1 = (currentL1 + nextL1).joinToString("\n")
 
-            // [L2-Parity] 번역 문맥 보존 (문장 단위, 0.4초 먼저 노출)
+            // [L2-Parity] 번역 문맥 보존 (문장 단위, 최대 4줄 제한)
             val currentL2 = (dataL2L3.tras2layer ?: "").split("\n").filter { it.isNotBlank() }
-            val nextL2 = getUniqueFuture(6, dataL2L3, futureRegistryL2L3) { it.tras2layer ?: "" }
+            val nextL2 = getUniqueFuture(3, dataL2L3, futureRegistryL2L3) { it.tras2layer ?: "" }
             val finalL2 = if (currentL2.isEmpty() && nextL2.isEmpty()) {
                 if (dataL1.origin1layer.isNotBlank()) "[번역 대기 중...]" else ""
             } else {
-                (currentL2 + nextL2).joinToString("\n")
+                (currentL2 + nextL2).take(4).joinToString("\n")
             }
 
             // [L3-Parity] 발음 문맥 보존 (현재 발음 + 0.4초 먼저 노출되는 미래 발음, 최대 2줄 제한)
