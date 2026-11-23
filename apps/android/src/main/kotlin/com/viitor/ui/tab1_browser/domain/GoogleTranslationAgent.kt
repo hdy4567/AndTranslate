@@ -10,19 +10,57 @@ import java.net.URL
 import java.net.URLEncoder
 import java.util.LinkedList
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.ThreadLocalRandom
 
 /**
- * 100% User Flow 완성 및 레거시 복구: 컨텍스트 슬라이딩 & 레이트 리밋 우회
- * - 3문장 캐싱(문맥 유지)
- * - 지수 백오프(Exponential Backoff) & LRU 캐시로 429 Rate Limit 방어
+ * [GoogleTranslationAgent] - 고도화된 익명화(Anonymization) 및 엔드포인트 로테이션 번역 엔진
+ *
+ * [주요 익명화 및 차단 우회 기법]
+ * 1. Multi-Endpoint 로테이션: translate.googleapis.com, translate.google.com 분산
+ * 2. Client 파라미터 로테이션: gtx, dict-chrome-ex 순환 사용
+ * 3. IP Spoofing 헤더 무작위화: X-Forwarded-For, Client-IP, X-Real-IP에 임의 IP 주입
+ * 4. User-Agent 풀 로테이션: 최신 모바일(Pixel, Galaxy, iPhone) 및 데스크톱 브라우저 지문 무작위 순환
+ * 5. 세션 및 쿠키 추적 원천 차단: useCaches=false, 완전 무상태(Stateless) 연결
+ * 6. 중복 요청 방어 전역 메모리 캐시 및 지수 백오프(Exponential Backoff)
  */
 class GoogleTranslationAgent {
     companion object {
+        private const val TAG = "TranslationAgent"
+
         // [RATE-LIMIT-DEFENSE] 동일 문장에 대한 중복 네트워크 호출을 원천 차단하는 전역 메모리 캐시
         private val translationMemoryCache = ConcurrentHashMap<String, Pair<String, String>>()
+
+        // [ANONYMIZATION-POOLS]
+        private val ENDPOINT_POOL = listOf(
+            "https://translate.googleapis.com/translate_a/single",
+            "https://translate.google.com/translate_a/single"
+        )
+
+        private val CLIENT_POOL = listOf("gtx", "dict-chrome-ex")
+
+        private val USER_AGENTS = listOf(
+            "Mozilla/5.0 (Linux; Android 14; Pixel 8 Pro) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.6312.118 Mobile Safari/537.36",
+            "Mozilla/5.0 (Linux; Android 14; SM-S928B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.6261.119 Mobile Safari/537.36",
+            "Mozilla/5.0 (iPhone; CPU iPhone OS 17_4_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4.1 Mobile/15E148 Safari/604.1",
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36",
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36"
+        )
+
+        private val ACCEPT_LANGUAGES = listOf(
+            "ko-KR,ko;q=0.9,ja;q=0.8,en;q=0.7",
+            "ja-JP,ja;q=0.9,ko-KR;q=0.8,ko;q=0.7,en;q=0.6",
+            "ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7",
+            "en-US,en;q=0.9,ja;q=0.8,ko;q=0.7"
+        )
+
+        /** 가상 IP 생성 (X-Forwarded-For 주입용 익명화) */
+        fun generateRandomIp(): String {
+            val r = ThreadLocalRandom.current()
+            return "${r.nextInt(20, 220)}.${r.nextInt(1, 254)}.${r.nextInt(1, 254)}.${r.nextInt(1, 254)}"
+        }
     }
 
-    // [LIVE-FALLBACK] 미래 문맥 데이터가 없을 시(실시간 캡처 등) 사용할 과거 문맥 저장소
+    // [LIVE-FALLBACK] 과거 문맥 저장소
     private val contextCache = LinkedList<String>()
 
     @Deprecated("Use fetchFullTranslation for better Romaji/Context support", 
@@ -33,11 +71,10 @@ class GoogleTranslationAgent {
     }
 
     /**
-     * [PLATINUM-V5 Upgrade] 통합 번역 엔진
+     * [PLATINUM-V5 Upgrade] 익명화 통합 번역 엔진
      * - [origin1layer] -> [tras2layer] + [rawPron3layer]
-     * - dt=t (Text) + dt=rm (rawPron3layer)를 한 번에 호출하여 대기 시간 1/2 단축.
-     * - [CONTEXT-RECOVERY] 3문장 문맥 동기화 복구 완료.
-     * - [RETRY-BACKOFF] 소켓 타임아웃 및 일시적 429 발생 시 최대 3회 자동 재시도
+     * - dt=t (Text) + dt=rm (Romaji)
+     * - 요청마다 엔드포인트/클라이언트/IP/User-Agent 익명화 로테이션
      */
     suspend fun fetchFullTranslation(
         origin1layer: String, 
@@ -45,7 +82,7 @@ class GoogleTranslationAgent {
     ): Pair<String, String> = withContext(Dispatchers.IO) {
         if (origin1layer.isBlank()) return@withContext Pair("", "")
 
-        // 1. 캐시 히트 검사
+        // 1. 메모리 캐시 히트 검사
         translationMemoryCache[origin1layer]?.let { return@withContext it }
 
         var lastException: Exception? = null
@@ -59,19 +96,34 @@ class GoogleTranslationAgent {
                 val futureLines = futureContext.take(2)
                 
                 val contextString = (pastLines + currentLines + futureLines).joinToString("\n")
-
                 val encodedText = URLEncoder.encode(contextString, "UTF-8")
-                val urlString = "https://translate.googleapis.com/translate_a/single?client=gtx&sl=ja&tl=ko&dt=t&dt=rm&q=$encodedText"
+
+                // [ANONYMIZED-ENDPOINT-SELECTION] 시도 횟수에 따라 엔드포인트 및 클라이언트 분산
+                val baseEndpoint = ENDPOINT_POOL[(attempt - 1) % ENDPOINT_POOL.size]
+                val clientParam = CLIENT_POOL[(attempt - 1) % CLIENT_POOL.size]
+                val urlString = "$baseEndpoint?client=$clientParam&sl=ja&tl=ko&dt=t&dt=rm&q=$encodedText"
+                
                 val url = URL(urlString)
                 val connection = url.openConnection() as HttpURLConnection
                 connection.requestMethod = "GET"
                 
-                // [LEGACY-HEADER-RECOVERY] 구글의 차단을 피하기 위한 헤더 구성
-                connection.setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 Chrome/120.0.0.0 Mobile Safari/537.36")
+                // [STATELESS-SANITIZATION] 캐시 및 쿠키 추적 차단
+                connection.useCaches = false
+                connection.defaultUseCaches = false
+
+                // [ANONYMIZED-HEADERS] 무작위 지문 주입
+                val r = ThreadLocalRandom.current()
+                val spoofedIp = generateRandomIp()
+                val userAgent = USER_AGENTS[r.nextInt(USER_AGENTS.size)]
+                val acceptLang = ACCEPT_LANGUAGES[r.nextInt(ACCEPT_LANGUAGES.size)]
+
+                connection.setRequestProperty("User-Agent", userAgent)
+                connection.setRequestProperty("X-Forwarded-For", spoofedIp)
+                connection.setRequestProperty("Client-IP", spoofedIp)
+                connection.setRequestProperty("X-Real-IP", spoofedIp)
                 connection.setRequestProperty("Accept", "application/json, text/javascript, */*")
-                connection.setRequestProperty("Accept-Language", "ko-KR,ko;q=0.9,ja;q=0.8,en;q=0.7")
+                connection.setRequestProperty("Accept-Language", acceptLang)
                 
-                // 타임아웃 10초 상향
                 connection.connectTimeout = 10000
                 connection.readTimeout = 10000
 
@@ -122,21 +174,21 @@ class GoogleTranslationAgent {
                     translationMemoryCache[origin1layer] = result
                     return@withContext result
                 } else {
-                    Log.w("TranslationAgent", "HTTP Response not OK: $responseCode (Attempt $attempt/$maxRetries)")
+                    Log.w(TAG, "[$clientParam] HTTP Response not OK: $responseCode (Attempt $attempt/$maxRetries, IP: $spoofedIp)")
                     if (responseCode == 429) {
-                        // Rate limit 걸렸을 경우 대기 후 재시도
+                        // Rate limit 걸렸을 경우 엔드포인트/클라이언트 교체 대기
                         delay(attempt * 800L)
                     }
                 }
             } catch (e: Exception) {
                 lastException = e
-                Log.w("TranslationAgent", "Fetch Attempt $attempt/$maxRetries Failed: ${e.message}")
+                Log.w(TAG, "Fetch Attempt $attempt/$maxRetries Failed: ${e.message}")
                 if (attempt < maxRetries) {
                     delay(attempt * 600L)
                 }
             }
         }
-        Log.e("TranslationAgent", "Full Fetch Exhausted All $maxRetries Retries", lastException)
+        Log.e(TAG, "Full Fetch Exhausted All $maxRetries Retries", lastException)
         return@withContext Pair("", "")
     }
 }
