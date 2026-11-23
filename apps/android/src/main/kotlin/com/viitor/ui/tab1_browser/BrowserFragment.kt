@@ -25,6 +25,7 @@ import com.viitor.ui.SharedSyncViewModel
 import com.viitor.ui.tab1_browser.bridge.YoutubeJsBridgeImpl
 import com.viitor.ui.tab1_browser.domain.OverlayModel
 import com.viitor.hijack.HijackDispatcher
+import com.viitor.hijack.YoutubeLiveHijackEngine
 import com.viitor.ui.tab1_browser.memory.IMemoryManager
 import com.viitor.ui.tab1_browser.memory.Tab1MemoryManager
 import com.viitor.util.ResourceBroker

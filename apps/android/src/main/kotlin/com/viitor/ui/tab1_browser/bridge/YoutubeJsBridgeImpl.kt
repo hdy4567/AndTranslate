@@ -82,12 +82,6 @@ class YoutubeJsBridgeImpl(
     }
 
     @JavascriptInterface
-    override fun onSubtitleCaptured(text: String) {
-        Log.i("YoutubeJsBridge", "🔥 [STT-QUEUE-HIT] $text")
-        viewModel.onSubtitleCaptured(text)
-    }
-
-    @JavascriptInterface
     override fun onLog(msg: String) {
         Log.d("YoutubeJsBridge", "[JS-CONSOLE] $msg")
     }
