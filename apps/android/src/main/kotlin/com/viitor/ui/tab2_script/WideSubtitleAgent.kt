@@ -17,7 +17,7 @@ object WideSubtitleAgent {
 
     suspend fun aggressiveExtract(videoId: String): List<SubtitleData> = withContext(Dispatchers.IO) {
         try {
-            val url = URL("https://www.youtube.com/watch?v=\$videoId")
+            val url = URL("https://www.youtube.com/watch?v=$videoId")
             val connection = url.openConnection() as HttpURLConnection
             connection.requestMethod = "GET"
             connection.setRequestProperty("User-Agent", "Mozilla/5.0") 

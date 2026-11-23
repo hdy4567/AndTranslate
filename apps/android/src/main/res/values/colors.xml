@@ -1,11 +1,49 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- [Plasma Cotton Candy] High-Energy Palette -->
+    <!-- [M3 Design System Tokens] -->
     <color name="colorPrimary">#00E5FF</color> <!-- Electric Cyan -->
     <color name="colorPrimaryDark">#00B8D4</color>
     <color name="colorAccent">#FF4081</color> <!-- Neon Magenta -->
     
+    <!-- Material Design 3 Dark Theme Semantic Roles -->
+    <color name="md_theme_dark_primary">#00E5FF</color>
+    <color name="md_theme_dark_onPrimary">#00363D</color>
+    <color name="md_theme_dark_primaryContainer">#004F58</color>
+    <color name="md_theme_dark_onPrimaryContainer">#80F5FF</color>
+    
+    <color name="md_theme_dark_secondary">#FF4081</color>
+    <color name="md_theme_dark_onSecondary">#5C0024</color>
+    <color name="md_theme_dark_secondaryContainer">#7E0035</color>
+    <color name="md_theme_dark_onSecondaryContainer">#FFD9E2</color>
+
+    <color name="md_theme_dark_background">#121212</color>
+    <color name="md_theme_dark_onBackground">#E6E1E5</color>
+    <color name="md_theme_dark_surface">#1E1E1E</color>
+    <color name="md_theme_dark_onSurface">#E6E1E5</color>
+    <color name="md_theme_dark_surfaceVariant">#2C2C2C</color>
+    <color name="md_theme_dark_onSurfaceVariant">#CAC4D0</color>
+    <color name="md_theme_dark_outline">#8A8A8E</color>
+    <color name="md_theme_dark_outlineVariant">#44474F</color>
+
+    <!-- Glassmorphic & Alpha Layers -->
+    <color name="glass_surface_bg">#26FFFFFF</color>
+    <color name="glass_card_bg">#1E1E1E</color>
+    <color name="glass_stroke">#33FFFFFF</color>
+    <color name="glass_bg">#80FFFFFF</color>
+    
+    <!-- Text Tonal Roles -->
+    <color name="text_high_emphasis">#FFFFFF</color>
+    <color name="text_medium_emphasis">#BDBDBD</color>
+    <color name="text_low_emphasis">#80FFFFFF</color>
+    <color name="text_disabled">#44FFFFFF</color>
+
+    <!-- Functional Accent Colors -->
+    <color name="action_blue">#64B5F6</color>
+    <color name="action_green">#81C784</color>
+    <color name="action_yellow">#FFD54F</color>
+    <color name="action_red">#FF5252</color>
+    <color name="action_purple">#CE93D8</color>
+
     <color name="white">#FFFFFF</color>
     <color name="black">#212121</color>
-    <color name="glass_bg">#80FFFFFF</color>
 </resources>

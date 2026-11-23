@@ -2,18 +2,18 @@
 <menu xmlns:android="http://schemas.android.com/apk/res/android">
     <item
         android:id="@+id/nav_browser"
-        android:icon="@android:drawable/ic_menu_today" 
-        android:title="Browser" />
+        android:icon="@drawable/ic_nav_browser" 
+        android:title="@string/nav_browser" />
     <item
         android:id="@+id/nav_script"
-        android:icon="@android:drawable/ic_menu_sort_by_size"
-        android:title="Script" />
+        android:icon="@drawable/ic_nav_script"
+        android:title="@string/nav_script" />
     <item
         android:id="@+id/nav_words"
-        android:icon="@android:drawable/ic_menu_agenda"
-        android:title="Words" />
+        android:icon="@drawable/ic_nav_words"
+        android:title="@string/nav_words" />
     <item
         android:id="@+id/nav_lens"
-        android:icon="@android:drawable/ic_menu_zoom"
-        android:title="Lens" />
+        android:icon="@drawable/ic_nav_lens"
+        android:title="@string/nav_lens" />
 </menu>

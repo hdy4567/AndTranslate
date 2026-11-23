@@ -1,0 +1,29 @@
+<resources>
+    <string name="app_name">AndTranslate</string>
+    
+    <!-- Navigation Tabs -->
+    <string name="nav_browser">브라우저</string>
+    <string name="nav_script">대본</string>
+    <string name="nav_words">단어장</string>
+    <string name="nav_lens">렌즈</string>
+
+    <!-- Script Tab -->
+    <string name="script_empty_placeholder">캡처된 자막이 없습니다.\n자막 엔진을 켜고 영상을 재생해보세요 !</string>
+    <string name="script_loading">번역 불러오는 중…</string>
+
+    <!-- Words Tab -->
+    <string name="words_header_title">VOCABULARY VAULT</string>
+    <string name="words_count_format">저장된 단어: %d개</string>
+    <string name="words_empty_hint">아직 저장된 단어가 없습니다.\n대본이나 영상에서 단어를 터치하여 보관해보세요!</string>
+    <string name="words_context_label">문맥 보기 (Used in Context)</string>
+    <string name="words_tap_to_warp">영상으로 바로 가기 ✈️</string>
+    <string name="words_no_meaning">의미를 확인하려면 클릭하세요</string>
+
+    <!-- Lens Tab -->
+    <string name="lens_guide_text">일본어 텍스트를 박스 안에 맞추세요</string>
+
+    <!-- Quiz Dialog -->
+    <string name="quiz_canvas_hint">여기에 직접 써보세요</string>
+    <string name="quiz_touch_to_reveal">* 카드를 터치하면 정답이 나옵니다.</string>
+    <string name="quiz_btn_next">다음 단어</string>
+</resources>

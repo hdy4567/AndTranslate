@@ -19,6 +19,9 @@ interface IYoutubeJsBridge {
     fun onFullTranscriptCaptured(jsonContent: String)
 
     @JavascriptInterface
+    fun onFullTranscriptCapturedChunked(chunk: String, index: Int, total: Int)
+
+    @JavascriptInterface
     fun onSubtitleCaptured(text: String)
 
     @JavascriptInterface

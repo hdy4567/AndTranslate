@@ -6,7 +6,7 @@
     android:layout_margin="16dp"
     app:cardCornerRadius="24dp"
     app:cardElevation="12dp"
-    app:cardBackgroundColor="#121212"
+    app:cardBackgroundColor="@color/md_theme_dark_background"
     android:id="@+id/quiz_card_root">
 
     <LinearLayout
@@ -19,8 +19,8 @@
             android:id="@+id/tv_quiz_word"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="كلمة"
-            android:textColor="#FF4081"
+            android:text="単語"
+            android:textColor="@color/md_theme_dark_secondary"
             android:textSize="36sp"
             android:textStyle="bold"
             android:layout_gravity="center_horizontal" />
@@ -31,7 +31,7 @@
             android:layout_height="wrap_content"
             android:layout_marginTop="16dp"
             android:text="Context Sentence..."
-            android:textColor="#BDBDBD"
+            android:textColor="@color/text_medium_emphasis"
             android:textSize="14sp"
             android:gravity="center"
             android:lineSpacingExtra="4dp" />
@@ -39,14 +39,14 @@
         <View
             android:layout_width="match_parent"
             android:layout_height="1dp"
-            android:background="#33FFFFFF"
+            android:background="@color/glass_stroke"
             android:layout_marginVertical="20dp" />
 
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="여기에 직접 써보세요"
-            android:textColor="#66FFFFFF"
+            android:text="@string/quiz_canvas_hint"
+            android:textColor="@color/text_low_emphasis"
             android:textSize="12sp"
             android:layout_gravity="center_horizontal"
             android:layout_marginBottom="8dp" />
@@ -61,7 +61,7 @@
                 android:id="@+id/quiz_canvas"
                 android:layout_width="match_parent"
                 android:layout_height="match_parent"
-                android:background="#1AFFFFFF" />
+                android:background="@color/glass_surface_bg" />
 
             <!-- [CANVAS-TRASH] -->
             <ImageView
@@ -70,8 +70,9 @@
                 android:layout_height="48dp"
                 android:layout_gravity="bottom|end"
                 android:layout_margin="12dp"
-                android:src="@android:drawable/ic_menu_delete"
-                app:tint="#66FFFFFF"
+                android:src="@drawable/ic_action_delete"
+                android:contentDescription="Clear Canvas"
+                app:tint="@color/text_low_emphasis"
                 android:padding="12dp"
                 android:background="?attr/selectableItemBackgroundBorderless" />
         </FrameLayout>
@@ -89,11 +90,11 @@
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
                 android:text="[ ??? ]"
-                android:textColor="#FFFFFF"
+                android:textColor="@color/text_high_emphasis"
                 android:textSize="20sp"
                 android:textStyle="bold"
                 android:gravity="center"
-                android:background="#26FFFFFF"
+                android:background="@color/glass_surface_bg"
                 android:padding="12dp" />
 
             <Button
@@ -101,9 +102,9 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_marginStart="12dp"
-                android:text="다음 단어 고!"
-                android:backgroundTint="#FF4081"
-                android:textColor="#FFFFFF" />
+                android:text="@string/quiz_btn_next"
+                android:backgroundTint="@color/md_theme_dark_secondary"
+                android:textColor="@color/white" />
         </LinearLayout>
 
         <TextView
@@ -111,9 +112,9 @@
             android:layout_height="wrap_content"
             android:layout_marginTop="8dp"
             android:layout_gravity="center_horizontal"
-            android:text="* 카드를 터치하면 정답이 나옵니다."
-            android:textColor="#44FFFFFF"
-            android:textSize="10sp" />
+            android:text="@string/quiz_touch_to_reveal"
+            android:textColor="@color/text_disabled"
+            android:textSize="11sp" />
 
     </LinearLayout>
 
