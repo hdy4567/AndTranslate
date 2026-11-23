@@ -90,7 +90,10 @@ class OverlayViewManager(private val context: Context) {
         tras2layerView = createSubtitleTextView(18f, Color.parseColor("#FF4081")).apply {
             typeface = android.graphics.Typeface.create(android.graphics.Typeface.SANS_SERIF, android.graphics.Typeface.BOLD)
         }
-        pron3layerView = createSubtitleTextView(16f, Color.parseColor("#FFD54F"))
+        pron3layerView = createSubtitleTextView(16f, Color.parseColor("#FFD54F")).apply {
+            maxLines = 2
+            ellipsize = android.text.TextUtils.TruncateAt.END
+        }
 
         subtitleContainer.addView(origin1layerView)
         subtitleContainer.addView(tras2layerView)

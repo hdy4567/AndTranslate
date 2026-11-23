@@ -8,3 +8,4 @@ local.properties
 test/logs/
 build_log*
 *.temp
+*.apk
