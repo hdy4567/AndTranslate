@@ -2,6 +2,7 @@ package com.viitor.ui.tab1_browser.domain
 
 import android.util.Log
 import com.viitor.pipeline.core.GlobalSubtitleRelay
+import com.viitor.pipeline.core.JapanesePronunciationAgent
 import com.viitor.pipeline.core.SubtitleData
 import kotlinx.coroutines.*
 import kotlinx.coroutines.sync.Mutex
@@ -68,15 +69,21 @@ class YoutubeLiveSubtitleAgent(
                     val (translatedKo, rawRomaji) = translationAgent.fetchFullTranslation(combinedJpText, pastCtx)
                     
                     val koLines = translatedKo.split("\n").filter { it.isNotBlank() }
+                    val romajiLines = rawRomaji.split("\n")
                     
                     // 조립 및 릴레이
                     batchToProcess.forEachIndexed { index, payload ->
                         val tLine = koLines.getOrNull(index) ?: ""
+                        val rLine = romajiLines.getOrNull(index) ?: ""
+                        val pKo = if (GlobalSubtitleRelay.isPron3LayerEnabled && rLine.isNotBlank()) {
+                            JapanesePronunciationAgent.convertRomajiToHangul(rLine)
+                        } else ""
                         
                         val data = SubtitleData(
                             anchorTimeMs = payload.anchorTimeMs,
                             origin1layer = payload.origin1layer,
-                            tras2layer = tLine
+                            tras2layer = tLine,
+                            pron3layer = pKo
                         )
                         
                         // 대본 레지스트리에 업데이트 (하이재킹 결과 누적)

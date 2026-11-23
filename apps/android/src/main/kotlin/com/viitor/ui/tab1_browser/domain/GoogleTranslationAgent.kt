@@ -98,10 +98,13 @@ class GoogleTranslationAgent {
                 val contextString = (pastLines + currentLines + futureLines).joinToString("\n")
                 val encodedText = URLEncoder.encode(contextString, "UTF-8")
 
+                val sourceLang = com.viitor.pipeline.core.GlobalSubtitleRelay.sourceLanguage
+                val targetLang = com.viitor.pipeline.core.GlobalSubtitleRelay.targetLanguage
+
                 // [ANONYMIZED-ENDPOINT-SELECTION] 시도 횟수에 따라 엔드포인트 및 클라이언트 분산
                 val baseEndpoint = ENDPOINT_POOL[(attempt - 1) % ENDPOINT_POOL.size]
                 val clientParam = CLIENT_POOL[(attempt - 1) % CLIENT_POOL.size]
-                val urlString = "$baseEndpoint?client=$clientParam&sl=ja&tl=ko&dt=t&dt=rm&q=$encodedText"
+                val urlString = "$baseEndpoint?client=$clientParam&sl=$sourceLang&tl=$targetLang&dt=t&dt=rm&q=$encodedText"
                 
                 val url = URL(urlString)
                 val connection = url.openConnection() as HttpURLConnection
