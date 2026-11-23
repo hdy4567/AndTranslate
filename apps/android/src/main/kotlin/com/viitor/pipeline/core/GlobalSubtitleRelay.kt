@@ -22,6 +22,14 @@ object GlobalSubtitleRelay {
     /** [PRON3LAYER-STATE] T 버튼의 활성화 상태 동기화 */
     var isPron3LayerEnabled: Boolean = true
 
+    /** [TARGET-LANGUAGE] 번역 대상 언어 ("ko" / "en") */
+    var targetLanguage: String = "ko"
+        set(value) {
+            field = value
+            onLanguageChanged?.invoke(value)
+        }
+    var onLanguageChanged: ((String) -> Unit)? = null
+
     /** [TRANSCRIPT-REGISTRY-SSOT] 하이재킹한 대본 전체 보관소 (Reactive Stream) */
     private var _transcriptRegistry = kotlinx.coroutines.flow.MutableStateFlow<List<SubtitleData>>(emptyList())
     val transcriptFlow: kotlinx.coroutines.flow.StateFlow<List<SubtitleData>> = _transcriptRegistry

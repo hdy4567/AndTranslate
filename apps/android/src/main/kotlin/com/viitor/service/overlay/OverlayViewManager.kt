@@ -292,6 +292,61 @@ class OverlayViewManager(private val context: Context) {
     }
 
     private fun buildSettingsContent(parent: LinearLayout) {
+        val prefs = context.getSharedPreferences("viitor_overlay_prefs", Context.MODE_PRIVATE)
+        val savedLang = prefs.getString("target_language", "ko") ?: "ko"
+        GlobalSubtitleRelay.targetLanguage = savedLang
+
+        // --- 1. Language Selector (한국어 / English) ---
+        val langLabel = TextView(context).apply {
+            text = "번역 대상 언어 (Target Language)"
+            setTextColor(Color.WHITE)
+            textSize = 12f
+            setPadding(0, 0, 0, 8)
+        }
+
+        val langLayout = LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            setPadding(0, 0, 0, 16)
+        }
+
+        lateinit var btnKo: Button
+        lateinit var btnEn: Button
+
+        fun updateLangButtons(currentLang: String) {
+            if (currentLang == "en") {
+                btnKo.setTextColor(Color.parseColor("#888888"))
+                btnKo.setBackgroundColor(Color.parseColor("#22FFFFFF"))
+                btnEn.setTextColor(Color.parseColor("#FF4081"))
+                btnEn.setBackgroundColor(Color.parseColor("#44FF4081"))
+            } else {
+                btnKo.setTextColor(Color.parseColor("#FF4081"))
+                btnKo.setBackgroundColor(Color.parseColor("#44FF4081"))
+                btnEn.setTextColor(Color.parseColor("#888888"))
+                btnEn.setBackgroundColor(Color.parseColor("#22FFFFFF"))
+            }
+        }
+
+        btnKo = createMiniButton("🇰🇷 한국어 (KO)", Color.WHITE) {
+            GlobalSubtitleRelay.targetLanguage = "ko"
+            prefs.edit().putString("target_language", "ko").apply()
+            updateLangButtons("ko")
+            GlobalSubtitleRelay.requestRepair()
+            Log.i(TAG, "[LANG] Switched translation target to KO")
+        }
+
+        btnEn = createMiniButton("🇺🇸 English (EN)", Color.WHITE) {
+            GlobalSubtitleRelay.targetLanguage = "en"
+            prefs.edit().putString("target_language", "en").apply()
+            updateLangButtons("en")
+            GlobalSubtitleRelay.requestRepair()
+            Log.i(TAG, "[LANG] Switched translation target to EN")
+        }
+
+        updateLangButtons(savedLang)
+        langLayout.addView(btnKo)
+        langLayout.addView(btnEn)
+
+        // --- 2. Pronunciation Switch ---
         val switchPron = android.widget.Switch(context).apply {
             text = "한국식 발음 표시"
             setTextColor(Color.WHITE)
@@ -302,6 +357,11 @@ class OverlayViewManager(private val context: Context) {
             }
         }
 
+        // --- 3. Subtitle Color Options ---
+        val colorLayout = LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            setPadding(0, 10, 0, 10)
+        }
         val btnColorPnk = createMiniButton("COLOR-PINK", Color.parseColor("#FF4081")) {
             val color = Color.parseColor("#FF4081")
             tras2layerView.setTextColor(color)
@@ -317,15 +377,12 @@ class OverlayViewManager(private val context: Context) {
             tras2layerView.setTextColor(color)
             GlobalSubtitleRelay.currentTras2LayerColor = color
         }
-
-        val colorLayout = LinearLayout(context).apply {
-            orientation = LinearLayout.HORIZONTAL
-            setPadding(0, 10, 0, 10)
-        }
         colorLayout.addView(btnColorPnk)
         colorLayout.addView(btnColorWht)
         colorLayout.addView(btnColorPnk2)
 
+        parent.addView(langLabel)
+        parent.addView(langLayout)
         parent.addView(switchPron)
         parent.addView(colorLayout)
     }

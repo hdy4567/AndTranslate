@@ -32,7 +32,8 @@ class GoogleTranslationAgent {
      */
     suspend fun fetchFullTranslation(
         origin1layer: String, 
-        futureContext: List<String> = emptyList()
+        futureContext: List<String> = emptyList(),
+        targetLang: String = com.viitor.pipeline.core.GlobalSubtitleRelay.targetLanguage
     ): Pair<String, String> = withContext(Dispatchers.IO) {
         if (origin1layer.isBlank()) return@withContext Pair("", "")
 
@@ -46,15 +47,20 @@ class GoogleTranslationAgent {
             val contextString = (pastLines + currentLines + futureLines).joinToString("\n")
 
             val encodedText = URLEncoder.encode(contextString, "UTF-8")
-            val urlString = "https://translate.googleapis.com/translate_a/single?client=gtx&sl=ja&tl=ko&dt=t&dt=rm&q=$encodedText"
+            val urlString = "https://translate.googleapis.com/translate_a/single?client=gtx&sl=ja&tl=$targetLang&dt=t&dt=rm&q=$encodedText"
             val url = URL(urlString)
             val connection = url.openConnection() as HttpURLConnection
             connection.requestMethod = "GET"
             
             // [LEGACY-HEADER-RECOVERY] 구글의 차단을 피하기 위한 고정밀 헤더 복구
+            val acceptLang = if (targetLang == "en") {
+                "en-US,en;q=0.9,ja;q=0.8,ko;q=0.7"
+            } else {
+                "ko-KR,ko;q=0.9,ja;q=0.8,en;q=0.7"
+            }
             connection.setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android 10) AppleWebKit/537.36 Chrome/120.0 Mobile Safari/537.36")
             connection.setRequestProperty("Accept", "application/json, text/javascript, */*")
-            connection.setRequestProperty("Accept-Language", "ko-KR,ko;q=0.9,ja;q=0.8,en;q=0.7")
+            connection.setRequestProperty("Accept-Language", acceptLang)
             
             connection.connectTimeout = 5000
             connection.readTimeout = 5000
