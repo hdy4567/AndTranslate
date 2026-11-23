@@ -303,9 +303,10 @@ object GlobalSubtitleRelay {
                 (currentL2 + nextL2).joinToString("\n")
             }
 
-            // [L3-Parity] 발음 문맥 보존 (0.4초 먼저 노출)
+            // [L3-Parity] 발음 문맥 보존 (현재 발음 + 0.4초 먼저 노출되는 미래 발음)
+            val currentL3 = (dataL2L3.pron3layer ?: "").trim()
             val nextL3 = getUniqueFuture(3, dataL2L3, futureRegistryL2L3) { it.pron3layer ?: "" }
-            val finalL3 = nextL3.joinToString(" ")
+            val finalL3 = (listOf(currentL3).filter { it.isNotBlank() } + nextL3).joinToString(" ")
 
             return dataL1.copy(
                 origin1layer = finalL1,

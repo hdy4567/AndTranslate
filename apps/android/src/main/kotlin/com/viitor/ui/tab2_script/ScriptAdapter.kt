@@ -83,6 +83,7 @@ class ScriptAdapter(
     inner class ScriptViewHolder(view: View) : RecyclerView.ViewHolder(view) {
         private val flexJp: com.google.android.flexbox.FlexboxLayout = view.findViewById(R.id.flex_item_jp)
         private val tvKo: TextView = view.findViewById(R.id.tv_item_ko)
+        private val tvPron: TextView = view.findViewById(R.id.tv_item_pronunciation)
         private val tvTime: TextView = view.findViewById(R.id.tv_item_time)
 
         private fun formatTime(ms: Long): String {
@@ -130,6 +131,14 @@ class ScriptAdapter(
                             if (res.first.isNotBlank()) {
                                 tvKo.text = res.first
                                 line.tras2layer = res.first
+                                val hangulPron = if (res.second.isNotBlank()) {
+                                    com.viitor.pipeline.core.JapanesePronunciationAgent.convertRomajiToHangul(res.second)
+                                } else ""
+                                line.pron3layer = hangulPron
+                                if (hangulPron.isNotBlank()) {
+                                    tvPron.visibility = View.VISIBLE
+                                    tvPron.text = hangulPron
+                                }
                             } else {
                                 tvKo.text = ""
                             }
@@ -140,6 +149,15 @@ class ScriptAdapter(
                         }
                     }
                 }
+            }
+
+            // 3번째 줄: 발음 표시 (한국식 발음)
+            val pronText = line.pron3layer.orEmpty()
+            if (pronText.isNotBlank()) {
+                tvPron.visibility = View.VISIBLE
+                tvPron.text = pronText
+            } else {
+                tvPron.visibility = View.GONE
             }
 
             if (isCurrent) {
