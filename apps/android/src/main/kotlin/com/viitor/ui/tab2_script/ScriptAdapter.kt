@@ -22,6 +22,7 @@ class ScriptAdapter(
     var currentVideoId: String? = null
     private var items = listOf<com.viitor.pipeline.core.SubtitleData>()
     private val translationAgent = GoogleTranslationAgent()
+    private val inFlightTranslations = mutableSetOf<String>()
 
     // 최적화: 전체 갱신(Lag 발생 방지)을 피하기 위한 현재/과거 인덱스 추적기
     private var currentActiveIndex = -1
@@ -126,16 +127,23 @@ class ScriptAdapter(
                 // [COLOR-SYNC] 오버레이 설정과 연동된 색상 적용
                 tvKo.setTextColor(com.viitor.pipeline.core.GlobalSubtitleRelay.currentTras2LayerColor)
             } else {
-                if (tvKo.text.isEmpty() || tvKo.text == "번역을 가져오는 중...") {
+                val originKey = line.origin1layer
+                if (!inFlightTranslations.contains(originKey)) {
+                    inFlightTranslations.add(originKey)
                     tvKo.text = "번역 불러오는 중..."
                     (itemView.context as? androidx.lifecycle.LifecycleOwner)?.lifecycleScope?.launch {
                         try {
-                            val agent = com.viitor.ui.tab1_browser.domain.GoogleTranslationAgent()
-                            val res = agent.fetchFullTranslation(line.origin1layer)
-                            tvKo.text = res.first
-                            line.tras2layer = res.first
+                            val res = translationAgent.fetchFullTranslation(originKey)
+                            if (res.first.isNotBlank()) {
+                                tvKo.text = res.first
+                                line.tras2layer = res.first
+                            } else {
+                                tvKo.text = ""
+                            }
                         } catch (e: Exception) {
-                            tvKo.text = "(!)"
+                            tvKo.text = ""
+                        } finally {
+                            inFlightTranslations.remove(originKey)
                         }
                     }
                 }

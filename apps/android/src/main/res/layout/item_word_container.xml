@@ -1,13 +1,16 @@
 <?xml version="1.0" encoding="utf-8"?>
-<androidx.cardview.widget.CardView xmlns:android="http://schemas.android.com/apk/res/android"
+<com.google.android.material.card.MaterialCardView
+    xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
     android:layout_marginHorizontal="12dp"
     android:layout_marginVertical="6dp"
     app:cardCornerRadius="16dp"
-    app:cardElevation="4dp"
-    app:cardBackgroundColor="#1E1E1E">
+    app:cardElevation="2dp"
+    app:strokeWidth="1dp"
+    app:strokeColor="@color/glass_stroke"
+    app:cardBackgroundColor="@color/md_theme_dark_surface">
 
     <LinearLayout
         android:layout_width="match_parent"
@@ -33,8 +36,8 @@
                     android:id="@+id/tv_word_main"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="كلمة"
-                    android:textColor="#FF4081"
+                    android:text="単語"
+                    android:textColor="@color/md_theme_dark_secondary"
                     android:textSize="20sp"
                     android:textStyle="bold" />
 
@@ -43,8 +46,8 @@
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="2dp"
-                    android:text="Meaning..."
-                    android:textColor="#FFFFFF"
+                    android:text="@string/words_no_meaning"
+                    android:textColor="@color/text_high_emphasis"
                     android:textSize="14sp" />
             </LinearLayout>
 
@@ -52,14 +55,16 @@
             <LinearLayout
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:orientation="horizontal">
+                android:orientation="horizontal"
+                android:gravity="center_vertical">
 
                 <ImageView
                     android:id="@+id/iv_warp_word"
                     android:layout_width="36dp"
                     android:layout_height="36dp"
-                    android:src="@android:drawable/ic_menu_send"
-                    app:tint="#64B5F6"
+                    android:src="@drawable/ic_action_warp"
+                    android:contentDescription="Warp to video"
+                    app:tint="@color/action_blue"
                     android:padding="8dp"
                     android:background="?attr/selectableItemBackgroundBorderless" />
 
@@ -67,8 +72,9 @@
                     android:id="@+id/iv_dict_word"
                     android:layout_width="36dp"
                     android:layout_height="36dp"
-                    android:src="@android:drawable/ic_menu_search"
-                    app:tint="#FFD54F"
+                    android:src="@drawable/ic_action_dict"
+                    android:contentDescription="Open Dictionary"
+                    app:tint="@color/action_yellow"
                     android:padding="8dp"
                     android:background="?attr/selectableItemBackgroundBorderless" />
 
@@ -76,8 +82,9 @@
                     android:id="@+id/iv_delete_word"
                     android:layout_width="36dp"
                     android:layout_height="36dp"
-                    android:src="@android:drawable/ic_menu_delete"
-                    app:tint="#FF5252"
+                    android:src="@drawable/ic_action_delete"
+                    android:contentDescription="Delete Word"
+                    app:tint="@color/action_red"
                     android:padding="8dp"
                     android:background="?attr/selectableItemBackgroundBorderless" />
             </LinearLayout>
@@ -92,23 +99,25 @@
             android:orientation="horizontal"
             android:gravity="center_vertical"
             android:background="?attr/selectableItemBackground"
-            android:padding="4dp">
+            android:paddingVertical="6dp"
+            android:paddingHorizontal="4dp">
             
             <TextView
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
-                android:text="Used in Context"
-                android:textColor="#A0A0A0"
-                android:textSize="11sp"
+                android:text="@string/words_context_label"
+                android:textColor="@color/text_low_emphasis"
+                android:textSize="12sp"
                 android:textStyle="italic" />
 
             <ImageView
                 android:id="@+id/iv_context_chevron"
-                android:layout_width="16dp"
-                android:layout_height="16dp"
-                android:src="@android:drawable/arrow_down_float"
-                app:tint="#60FFFFFF" />
+                android:layout_width="20dp"
+                android:layout_height="20dp"
+                android:src="@drawable/ic_chevron_down"
+                android:contentDescription="Expand context"
+                app:tint="@color/text_low_emphasis" />
         </LinearLayout>
 
         <!-- [CONTEXT-BUBBLE] 말풍선 스타일 -->
@@ -117,7 +126,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="6dp"
-            android:background="#26FFFFFF"
+            android:background="@color/glass_surface_bg"
             android:padding="12dp"
             android:orientation="vertical"
             android:visibility="gone">
@@ -127,7 +136,7 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:text="Loading context..."
-                android:textColor="#BDBDBD"
+                android:textColor="@color/text_medium_emphasis"
                 android:textSize="13sp"
                 android:lineSpacingExtra="4dp" />
             
@@ -135,13 +144,12 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_gravity="end"
-                android:layout_marginTop="4dp"
-                android:text="Tap to Warp ✈️"
-                android:textColor="#64B5F6"
-                android:textSize="10sp"
-                android:alpha="0.7" />
+                android:layout_marginTop="6dp"
+                android:text="@string/words_tap_to_warp"
+                android:textColor="@color/action_blue"
+                android:textSize="11sp" />
         </LinearLayout>
 
     </LinearLayout>
 
-</androidx.cardview.widget.CardView>
+</com.google.android.material.card.MaterialCardView>

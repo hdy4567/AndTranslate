@@ -3,21 +3,19 @@
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="#121212">
+    android:background="@color/md_theme_dark_background">
 
-    <!-- 디자인 테마: 다크 배경 + #FF4081 포인트 컬러 -->
-
-    <!-- 캡쳐됀 자막이 없을 때 표시되는 프리미엄 Placeholder -->
+    <!-- 캡처된 자막이 없을 때 표시되는 프리미엄 Placeholder -->
     <TextView
         android:id="@+id/tv_script_empty_placeholder"
         android:layout_width="0dp"
         android:layout_height="wrap_content"
         android:layout_marginHorizontal="40dp"
         android:gravity="center"
-        android:text="캡쳐됀 자막이 없습니다.\n자막 엔진을 켜고 영상을 재생해보세요 !"
-        android:textColor="#55FFFFFF"
+        android:text="@string/script_empty_placeholder"
+        android:textColor="@color/text_low_emphasis"
         android:textSize="15sp"
-        android:textStyle="italic"
+        android:lineSpacingExtra="4dp"
         android:visibility="gone"
         app:layout_constraintTop_toTopOf="parent"
         app:layout_constraintBottom_toBottomOf="parent"
@@ -36,7 +34,7 @@
         android:id="@+id/pb_script_loading"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:indeterminateTint="#FF4081"
+        android:indeterminateTint="@color/md_theme_dark_secondary"
         app:layout_constraintTop_toTopOf="parent"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintStart_toStartOf="parent"
