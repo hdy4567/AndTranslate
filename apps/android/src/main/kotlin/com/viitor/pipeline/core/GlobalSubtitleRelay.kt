@@ -22,6 +22,48 @@ object GlobalSubtitleRelay {
     /** [PRON3LAYER-STATE] T 버튼의 활성화 상태 동기화 */
     var isPron3LayerEnabled: Boolean = true
 
+    /** [TRANSLATION-MODE] 지원 번역 모드: 한국어 -> 영어, 한국어 -> 일본어 */
+    enum class TranslationMode(
+        val sourceLang: String,
+        val targetLang: String,
+        val code: String,
+        val title: String,
+        val shortLabel: String
+    ) {
+        KO_TO_EN("ko", "en", "KO_EN", "🇰🇷 한국어 ➔ 🇺🇸 영어", "KO ➔ EN"),
+        KO_TO_JA("ko", "ja", "KO_JA", "🇰🇷 한국어 ➔ 🇯🇵 일본어", "KO ➔ JA");
+
+        companion object {
+            fun fromCode(code: String): TranslationMode {
+                return values().find { it.code == code } ?: KO_TO_EN
+            }
+        }
+    }
+
+    var translationMode: TranslationMode = TranslationMode.KO_TO_EN
+        set(value) {
+            field = value
+            sourceLanguage = value.sourceLang
+            targetLanguage = value.targetLang
+            onLanguageChanged?.invoke(value.targetLang)
+        }
+
+    var sourceLanguage: String = "ko"
+    var targetLanguage: String = "en"
+    var onLanguageChanged: ((String) -> Unit)? = null
+
+    private val KO_REGEX = Regex("[\uAC00-\uD7AF\u1100-\u11FF]")
+    private val JP_REGEX = Regex("[\u3040-\u309F\u30A0-\u30FF\u4E00-\u9FFF]")
+
+    fun isValidSourceText(text: String): Boolean {
+        if (text.isBlank()) return false
+        return when (sourceLanguage) {
+            "ko" -> KO_REGEX.containsMatchIn(text) || text.any { it.isLetter() }
+            "ja" -> JP_REGEX.containsMatchIn(text) || text.any { it.isLetter() }
+            else -> text.any { it.isLetter() }
+        }
+    }
+
     /** [TRANSCRIPT-REGISTRY-SSOT] 하이재킹한 대본 전체 보관소 (Reactive Stream) */
     private var _transcriptRegistry = kotlinx.coroutines.flow.MutableStateFlow<List<SubtitleData>>(emptyList())
     val transcriptFlow: kotlinx.coroutines.flow.StateFlow<List<SubtitleData>> = _transcriptRegistry
