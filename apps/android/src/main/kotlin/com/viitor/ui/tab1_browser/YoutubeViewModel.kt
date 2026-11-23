@@ -120,7 +120,7 @@ class YoutubeViewModel : ViewModel() {
                     }
                 }
 
-                if (batchToProcess.isNotEmpty() && combinedOrigin1L.isNotBlank() && JP_REGEX.containsMatchIn(combinedOrigin1L)) {
+                if (batchToProcess.isNotEmpty() && combinedOrigin1L.isNotBlank() && com.viitor.pipeline.core.GlobalSubtitleRelay.isValidSourceText(combinedOrigin1L)) {
                     try {
                         val res = translationAgent.fetchFullTranslation(combinedOrigin1L, emptyList())
                         val trasRaw = res.first

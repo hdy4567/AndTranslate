@@ -293,58 +293,66 @@ class OverlayViewManager(private val context: Context) {
 
     private fun buildSettingsContent(parent: LinearLayout) {
         val prefs = context.getSharedPreferences("viitor_overlay_prefs", Context.MODE_PRIVATE)
-        val savedLang = prefs.getString("target_language", "ko") ?: "ko"
-        GlobalSubtitleRelay.targetLanguage = savedLang
+        val savedModeCode = prefs.getString("translation_mode_code", "KO_EN") ?: "KO_EN"
+        val initialMode = GlobalSubtitleRelay.TranslationMode.fromCode(savedModeCode)
+        GlobalSubtitleRelay.translationMode = initialMode
 
-        // --- 1. Language Selector (한국어 / English) ---
+        // --- 1. Translation Mode Selector (한국어 -> 영어 / 한국어 -> 일본어) ---
         val langLabel = TextView(context).apply {
-            text = "번역 대상 언어 (Target Language)"
+            text = "번역 모드 설정 (Translation Mode)"
             setTextColor(Color.WHITE)
-            textSize = 12f
-            setPadding(0, 0, 0, 8)
+            textSize = 13f
+            typeface = android.graphics.Typeface.DEFAULT_BOLD
+            setPadding(0, 0, 0, 10)
         }
 
-        val langLayout = LinearLayout(context).apply {
-            orientation = LinearLayout.HORIZONTAL
+        val modeLayout = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
             setPadding(0, 0, 0, 16)
         }
 
-        lateinit var btnKo: Button
-        lateinit var btnEn: Button
+        lateinit var btnKoEn: Button
+        lateinit var btnKoJa: Button
 
-        fun updateLangButtons(currentLang: String) {
-            if (currentLang == "en") {
-                btnKo.setTextColor(Color.parseColor("#888888"))
-                btnKo.setBackgroundColor(Color.parseColor("#22FFFFFF"))
-                btnEn.setTextColor(Color.parseColor("#FF4081"))
-                btnEn.setBackgroundColor(Color.parseColor("#44FF4081"))
+        fun updateModeButtons(currentMode: GlobalSubtitleRelay.TranslationMode) {
+            if (currentMode == GlobalSubtitleRelay.TranslationMode.KO_TO_EN) {
+                btnKoEn.setTextColor(Color.parseColor("#FF4081"))
+                btnKoEn.setBackgroundColor(Color.parseColor("#44FF4081"))
+                btnKoJa.setTextColor(Color.parseColor("#888888"))
+                btnKoJa.setBackgroundColor(Color.parseColor("#22FFFFFF"))
             } else {
-                btnKo.setTextColor(Color.parseColor("#FF4081"))
-                btnKo.setBackgroundColor(Color.parseColor("#44FF4081"))
-                btnEn.setTextColor(Color.parseColor("#888888"))
-                btnEn.setBackgroundColor(Color.parseColor("#22FFFFFF"))
+                btnKoEn.setTextColor(Color.parseColor("#888888"))
+                btnKoEn.setBackgroundColor(Color.parseColor("#22FFFFFF"))
+                btnKoJa.setTextColor(Color.parseColor("#FF4081"))
+                btnKoJa.setBackgroundColor(Color.parseColor("#44FF4081"))
             }
         }
 
-        btnKo = createMiniButton("🇰🇷 한국어 (KO)", Color.WHITE) {
-            GlobalSubtitleRelay.targetLanguage = "ko"
-            prefs.edit().putString("target_language", "ko").apply()
-            updateLangButtons("ko")
+        btnKoEn = createMiniButton("🇰🇷 한국어 ➔ 🇺🇸 영어 (KO ➔ EN)", Color.WHITE) {
+            GlobalSubtitleRelay.translationMode = GlobalSubtitleRelay.TranslationMode.KO_TO_EN
+            prefs.edit().putString("translation_mode_code", "KO_EN").apply()
+            updateModeButtons(GlobalSubtitleRelay.TranslationMode.KO_TO_EN)
             GlobalSubtitleRelay.requestRepair()
-            Log.i(TAG, "[LANG] Switched translation target to KO")
+            Log.i(TAG, "[MODE] Set Translation Mode to KO -> EN")
+        }.apply {
+            gravity = Gravity.START or Gravity.CENTER_VERTICAL
+            setPadding(25, 12, 25, 12)
         }
 
-        btnEn = createMiniButton("🇺🇸 English (EN)", Color.WHITE) {
-            GlobalSubtitleRelay.targetLanguage = "en"
-            prefs.edit().putString("target_language", "en").apply()
-            updateLangButtons("en")
+        btnKoJa = createMiniButton("🇰🇷 한국어 ➔ 🇯🇵 일본어 (KO ➔ JA)", Color.WHITE) {
+            GlobalSubtitleRelay.translationMode = GlobalSubtitleRelay.TranslationMode.KO_TO_JA
+            prefs.edit().putString("translation_mode_code", "KO_JA").apply()
+            updateModeButtons(GlobalSubtitleRelay.TranslationMode.KO_TO_JA)
             GlobalSubtitleRelay.requestRepair()
-            Log.i(TAG, "[LANG] Switched translation target to EN")
+            Log.i(TAG, "[MODE] Set Translation Mode to KO -> JA")
+        }.apply {
+            gravity = Gravity.START or Gravity.CENTER_VERTICAL
+            setPadding(25, 12, 25, 12)
         }
 
-        updateLangButtons(savedLang)
-        langLayout.addView(btnKo)
-        langLayout.addView(btnEn)
+        updateModeButtons(initialMode)
+        modeLayout.addView(btnKoEn)
+        modeLayout.addView(btnKoJa)
 
         // --- 2. Pronunciation Switch ---
         val switchPron = android.widget.Switch(context).apply {
@@ -382,7 +390,7 @@ class OverlayViewManager(private val context: Context) {
         colorLayout.addView(btnColorPnk2)
 
         parent.addView(langLabel)
-        parent.addView(langLayout)
+        parent.addView(modeLayout)
         parent.addView(switchPron)
         parent.addView(colorLayout)
     }
