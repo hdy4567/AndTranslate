@@ -7,6 +7,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.TextView
 import androidx.recyclerview.widget.RecyclerView
+import com.viitor.R
 import com.viitor.ui.tab1_browser.domain.GoogleTranslationAgent
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.lifecycleScope
@@ -67,9 +68,7 @@ class ScriptAdapter(
     }
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): ScriptViewHolder {
-        val ctx = parent.context
-        val layoutId = ctx.resources.getIdentifier("item_script_line", "layout", ctx.packageName)
-        val view = LayoutInflater.from(ctx).inflate(layoutId, parent, false)
+        val view = LayoutInflater.from(parent.context).inflate(R.layout.item_script_line, parent, false)
         return ScriptViewHolder(view)
     }
 
@@ -82,15 +81,9 @@ class ScriptAdapter(
     override fun getItemCount(): Int = items.size
 
     inner class ScriptViewHolder(view: View) : RecyclerView.ViewHolder(view) {
-        private val flexJp: com.google.android.flexbox.FlexboxLayout = view.findViewById(
-            view.context.resources.getIdentifier("flex_item_jp", "id", view.context.packageName)
-        )
-        private val tvKo: TextView = view.findViewById(
-            view.context.resources.getIdentifier("tv_item_ko", "id", view.context.packageName)
-        )
-        private val tvTime: TextView = view.findViewById(
-            view.context.resources.getIdentifier("tv_item_time", "id", view.context.packageName)
-        )
+        private val flexJp: com.google.android.flexbox.FlexboxLayout = view.findViewById(R.id.flex_item_jp)
+        private val tvKo: TextView = view.findViewById(R.id.tv_item_ko)
+        private val tvTime: TextView = view.findViewById(R.id.tv_item_time)
 
         private fun formatTime(ms: Long): String {
             val totalSec = ms / 1000
