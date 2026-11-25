@@ -22,6 +22,12 @@ object GlobalSubtitleRelay {
     /** [PRON3LAYER-STATE] T 버튼의 활성화 상태 동기화 */
     var isPron3LayerEnabled: Boolean = true
 
+    /** [AUTO-SCROLL-STATE] 2탭 스크롤 동기화 추적 토글 (스크롤 끌려감 방지) */
+    var isScriptAutoScrollEnabled: Boolean = true
+
+    /** [VOCAB-HIGHLIGHT-STATE] 내 단어 하이라이트 활성화 여부 */
+    var isVocabHighlightEnabled: Boolean = true
+
     /** [VOCAB-HIGHLIGHT-STATE] 저장된 단어 목록 및 실시간 하이라이트 동기화 */
     var savedVocabWords: Set<String> = emptySet()
     var savedVocabList: List<com.viitor.data.local.VocabularyEntity> = emptyList()

@@ -44,6 +44,19 @@ class ScriptFragment : Fragment() {
         pbLoading = view.findViewById(ResourceBroker.idScriptLoading)
         tvEmptyInfo = view.findViewById(ResourceBroker.idScriptEmpty)
 
+        // [AUTOSCROLL-TOGGLE] 2탭 우측 상단 자동 스크롤 동기화 On/Off (스크롤 끌려감 방지)
+        val switchAutoScroll = view.findViewById<com.google.android.material.materialswitch.MaterialSwitch>(ResourceBroker.idScriptAutoScrollSwitch)
+        val prefs = requireContext().getSharedPreferences("viitor_script_prefs", android.content.Context.MODE_PRIVATE)
+        val isAutoScrollOn = prefs.getBoolean("script_auto_scroll", true)
+        com.viitor.pipeline.core.GlobalSubtitleRelay.isScriptAutoScrollEnabled = isAutoScrollOn
+        switchAutoScroll?.isChecked = isAutoScrollOn
+        switchAutoScroll?.setOnCheckedChangeListener { _, isChecked ->
+            com.viitor.pipeline.core.GlobalSubtitleRelay.isScriptAutoScrollEnabled = isChecked
+            prefs.edit().putBoolean("script_auto_scroll", isChecked).apply()
+            val msg = if (isChecked) "자동 스크롤 켜짐 (재생 위치 추적)" else "자동 스크롤 꺼짐 (스크롤 고정)"
+            Toast.makeText(requireContext(), msg, Toast.LENGTH_SHORT).show()
+        }
+
         adapter = ScriptAdapter(
             onLineClicked = { anchorTimeMs ->
                 sharedViewModel.commandJumpToTime(anchorTimeMs)

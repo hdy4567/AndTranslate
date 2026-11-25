@@ -150,6 +150,7 @@ class OverlayViewManager(private val context: Context) {
     }
 
     private fun highlightVocabWords(text: String): CharSequence {
+        if (!GlobalSubtitleRelay.isVocabHighlightEnabled) return text
         val savedWords = GlobalSubtitleRelay.savedVocabWords
         if (savedWords.isEmpty() || text.isBlank()) return text
 

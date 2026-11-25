@@ -30,4 +30,27 @@
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintBottom_toBottomOf="parent" />
 
+    <!-- 레이어 3: 상단 좌측 A-B 루프 원터치 제어 버튼 -->
+    <com.google.android.material.button.MaterialButton
+        android:id="@+id/btn_browser_ab_loop"
+        android:layout_width="wrap_content"
+        android:layout_height="36dp"
+        android:layout_marginStart="14dp"
+        android:layout_marginTop="14dp"
+        android:text="[A-B] 구간 반복"
+        android:textSize="12sp"
+        android:textColor="@color/white"
+        android:includeFontPadding="false"
+        android:paddingStart="12dp"
+        android:paddingEnd="12dp"
+        android:insetTop="0dp"
+        android:insetBottom="0dp"
+        app:backgroundTint="#D91E1E1E"
+        app:strokeColor="#55FFFFFF"
+        app:strokeWidth="1dp"
+        app:cornerRadius="18dp"
+        app:elevation="6dp"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent" />
+
 </androidx.constraintlayout.widget.ConstraintLayout>
