@@ -31,6 +31,9 @@ class SharedSyncViewModel(application: Application) : AndroidViewModel(applicati
     val savedWordsList: StateFlow<List<VocabularyEntity>> = vocabularyDao.getAllWords()
         .stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
 
+    val reviewWordsList: StateFlow<List<VocabularyEntity>> = vocabularyDao.getWordsForReview()
+        .stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
+
     val loopConfig: StateFlow<GlobalSubtitleRelay.LoopConfig> = GlobalSubtitleRelay.loopConfig
 
     private val _jumpCommandEvent = MutableSharedFlow<Long>()
@@ -38,6 +41,23 @@ class SharedSyncViewModel(application: Application) : AndroidViewModel(applicati
 
     private val _translationColor = MutableStateFlow(android.graphics.Color.WHITE)
     val translationColor: StateFlow<Int> = _translationColor
+
+    fun recordReviewResult(entity: VocabularyEntity, isKnown: Boolean) {
+        viewModelScope.launch {
+            val now = System.currentTimeMillis()
+            val oneDayMs = 24L * 60 * 60 * 1000
+            if (isKnown) {
+                val nextInterval = (entity.reviewIntervalDays * 2).coerceAtMost(60).coerceAtLeast(2)
+                val nextReview = now + (nextInterval * oneDayMs)
+                vocabularyDao.updateReviewProgress(entity.id, nextReview, entity.wrongCount, nextInterval)
+            } else {
+                val nextWrong = entity.wrongCount + 1
+                val nextInterval = 1
+                val nextReview = now + oneDayMs
+                vocabularyDao.updateReviewProgress(entity.id, nextReview, nextWrong, nextInterval)
+            }
+        }
+    }
 
     fun setAbLoop(startMs: Long, endMs: Long) {
         GlobalSubtitleRelay.setAbLoop(startMs, endMs)

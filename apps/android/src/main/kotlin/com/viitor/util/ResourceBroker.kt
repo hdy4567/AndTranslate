@@ -53,6 +53,10 @@ object ResourceBroker {
     val idQuizNext = R.id.btn_quiz_next
     val idQuizRoot = R.id.quiz_card_root
     val idQuizClearCanvas = R.id.btn_quiz_clear_canvas
+    val idQuizTts = R.id.btn_quiz_tts
+    val idQuizGradeLayout = R.id.layout_quiz_grade
+    val idQuizKnow = R.id.btn_quiz_know
+    val idQuizRetry = R.id.btn_quiz_retry
 
     // --- Lens IDs ---
     val idLensPreview = R.id.preview_view

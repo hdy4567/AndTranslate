@@ -5,10 +5,13 @@ import androidx.room.PrimaryKey
 
 /**
  * ★ [VocabularyEntity] (3번 탭 저장소 모델)
- * - word: 일본어 원문
+ * - word: 일본어/영어 원문
  * - tras2layer: 한국어 번역
  * - origin1layer: 추출 당시의 문맥(문장)
  * - timestamp: 저장 시점
+ * - nextReviewAt: 망각곡선 다음 복습 시점 (ms)
+ * - wrongCount: 다시 보기(오답) 누적 횟수
+ * - reviewIntervalDays: 현재 복습 간격(일)
  */
 @Entity(tableName = "vocabulary_vault")
 data class VocabularyEntity(
@@ -19,5 +22,8 @@ data class VocabularyEntity(
     val anchorTimeMs: Long = 0L, // [TIME-WARP] 캡처 당시의 비디오 시간(ms)
     val videoId: String? = null, // [PLATINUM-V5] 원본 영상 ID 매핑
     val timestamp: Long = System.currentTimeMillis(),
-    val source: String = "Tab4_Lens" // Tab2_Script or Tab4_Lens
+    val source: String = "Tab4_Lens", // Tab2_Script or Tab4_Lens
+    val nextReviewAt: Long = System.currentTimeMillis(),
+    val wrongCount: Int = 0,
+    val reviewIntervalDays: Int = 1
 )
