@@ -1,23 +1,35 @@
 package com.viitor.ui.tab3_words
 
+import android.app.Dialog
+import android.graphics.Color
 import android.os.Bundle
+import android.speech.tts.TextToSpeech
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.widget.Button
+import android.widget.ImageView
+import android.widget.TextView
+import android.widget.Toast
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.activityViewModels
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
+import com.viitor.MainActivity
+import com.viitor.data.local.VocabularyEntity
 import com.viitor.ui.SharedSyncViewModel
+import com.viitor.util.DictActionUtil
 import com.viitor.util.ResourceBroker
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
+import java.util.Locale
 
 class WordsFragment : Fragment() {
 
     private val sharedViewModel: SharedSyncViewModel by activityViewModels()
     private lateinit var recyclerView: RecyclerView
+    private var tts: TextToSpeech? = null
 
     override fun onCreateView(
         inflater: LayoutInflater, container: ViewGroup?,
@@ -31,11 +43,11 @@ class WordsFragment : Fragment() {
         val adapter = WordsAdapter(
             onDelete = { id -> sharedViewModel.deleteWord(id) },
             onDict = { jp -> 
-                com.viitor.util.DictActionUtil.openNaverDict(requireContext(), jp) 
+                DictActionUtil.openNaverDict(requireContext(), jp) 
             },
             onWarp = { videoId, timeMs -> 
                 sharedViewModel.warpToWord(videoId, timeMs)
-                (activity as? com.viitor.MainActivity)?.navigateToTab(0)
+                (activity as? MainActivity)?.navigateToTab(0)
             }
         )
         recyclerView.adapter = adapter
@@ -44,10 +56,12 @@ class WordsFragment : Fragment() {
             sharedViewModel.savedWordsList.collectLatest { list ->
                 adapter.submitList(list)
                 // [COUNT-SYNC] 저장된 단어 개수 실시간 반영 (Aura Capsule V5 Sync)
-                val tvCount = view.findViewById<android.widget.TextView>(ResourceBroker.idWordCount)
+                val tvCount = view.findViewById<TextView>(ResourceBroker.idWordCount)
                 tvCount?.text = "저장된 단어: ${list.size}개"
             }
         }
+
+        initTts()
 
         val btnQuiz = view.findViewById<View>(ResourceBroker.idQuizBtn)
         btnQuiz.setOnClickListener {
@@ -55,58 +69,112 @@ class WordsFragment : Fragment() {
             if (words.isNotEmpty()) {
                 showPremiumQuiz(words)
             } else {
-                android.widget.Toast.makeText(requireContext(), "저장된 단어가 없습니다. 단어를 먼저 추가해주세요!", android.widget.Toast.LENGTH_SHORT).show()
+                Toast.makeText(requireContext(), "저장된 단어가 없습니다. 단어를 먼저 추가해주세요!", Toast.LENGTH_SHORT).show()
             }
         }
 
         return view
     }
 
-    private fun showPremiumQuiz(words: List<com.viitor.data.local.VocabularyEntity>) {
-        val dialog = android.app.Dialog(requireContext(), android.R.style.Theme_Black_NoTitleBar_Fullscreen)
+    private fun initTts() {
+        if (tts == null) {
+            tts = TextToSpeech(requireContext().applicationContext) { status ->
+                if (status == TextToSpeech.SUCCESS) {
+                    tts?.language = Locale.JAPANESE
+                }
+            }
+        }
+    }
+
+    private fun speakWord(text: String) {
+        if (text.isBlank()) return
+        val isJapanese = text.any { c ->
+            (c in '\u3040'..'\u309F') || (c in '\u30A0'..'\u30FF') || (c in '\u4E00'..'\u9FFF')
+        }
+        val locale = if (isJapanese) Locale.JAPANESE else Locale.US
+        tts?.language = locale
+        tts?.speak(text, TextToSpeech.QUEUE_FLUSH, null, "QUIZ_WORD_TTS")
+    }
+
+    private fun showPremiumQuiz(words: List<VocabularyEntity>) {
+        val dialog = Dialog(requireContext(), android.R.style.Theme_Black_NoTitleBar_Fullscreen)
         val quizView = LayoutInflater.from(requireContext()).inflate(ResourceBroker.layoutPremiumQuiz, null)
         dialog.setContentView(quizView)
 
-        val tvWord = quizView.findViewById<android.widget.TextView>(ResourceBroker.idQuizWord)
-        val tvContext = quizView.findViewById<android.widget.TextView>(ResourceBroker.idQuizContext)
-        val tvMeaning = quizView.findViewById<android.widget.TextView>(ResourceBroker.idQuizMeaning)
+        val tvWord = quizView.findViewById<TextView>(ResourceBroker.idQuizWord)
+        val btnTts = quizView.findViewById<ImageView>(ResourceBroker.idQuizTts)
+        val tvContext = quizView.findViewById<TextView>(ResourceBroker.idQuizContext)
+        val tvMeaning = quizView.findViewById<TextView>(ResourceBroker.idQuizMeaning)
         val canvas = quizView.findViewById<HandwritingCanvasView>(ResourceBroker.idQuizCanvas)
-        val btnNext = quizView.findViewById<android.widget.Button>(ResourceBroker.idQuizNext)
+        val btnNext = quizView.findViewById<Button>(ResourceBroker.idQuizNext)
         val btnClear = quizView.findViewById<View>(ResourceBroker.idQuizClearCanvas)
         val cardRoot = quizView.findViewById<View>(ResourceBroker.idQuizRoot)
+        val layoutGrade = quizView.findViewById<View>(ResourceBroker.idQuizGradeLayout)
+        val btnKnow = quizView.findViewById<Button>(ResourceBroker.idQuizKnow)
+        val btnRetry = quizView.findViewById<Button>(ResourceBroker.idQuizRetry)
 
-        var currentIndex = (0 until words.size).random()
-        
+        // SRS Priority Ordering: Due words first, then earliest review, then most wrong answers
+        val now = System.currentTimeMillis()
+        val sortedWords = words.sortedWith(
+            compareBy<VocabularyEntity> { if (it.nextReviewAt <= now) 0 else 1 }
+                .thenBy { it.nextReviewAt }
+                .thenByDescending { it.wrongCount }
+        ).toMutableList()
+
+        var currentIndex = 0
+        var isRevealed = false
+
         fun loadWord(idx: Int) {
-            val word = words[idx]
+            val word = sortedWords[idx]
             tvWord.text = word.word
             tvContext.text = word.origin1layer ?: "이 단어가 포함된 문맥이 없습니다."
             tvMeaning.text = "[ ??? ]"
-            tvMeaning.setTextColor(android.graphics.Color.parseColor("#44FFFFFF"))
+            tvMeaning.setTextColor(Color.parseColor("#44FFFFFF"))
+            layoutGrade?.visibility = View.GONE
             canvas.clear()
+            speakWord(word.word)
         }
 
         loadWord(currentIndex)
 
-        var isRevealed = false
-        
-        // [INTERACTION-FIX] 카드 전체 터치 시 정답 노출 (단, 캔버스 드로잉 중일 때는 캔버스가 이벤트를 소모하므로 영향 없음)
+        btnTts?.setOnClickListener {
+            val word = sortedWords[currentIndex]
+            speakWord(word.word)
+        }
+
         cardRoot.setOnClickListener {
-            val word = words[currentIndex]
+            val word = sortedWords[currentIndex]
             isRevealed = !isRevealed
-            
             if (isRevealed) {
                 tvMeaning.text = word.tras2layer ?: "의미 없음"
-                tvMeaning.setTextColor(android.graphics.Color.WHITE)
+                tvMeaning.setTextColor(Color.WHITE)
+                layoutGrade?.visibility = View.VISIBLE
             } else {
                 tvMeaning.text = "[ ??? ]"
-                tvMeaning.setTextColor(android.graphics.Color.parseColor("#44FFFFFF"))
+                tvMeaning.setTextColor(Color.parseColor("#44FFFFFF"))
+                layoutGrade?.visibility = View.GONE
             }
         }
 
-        btnNext.setOnClickListener {
-            currentIndex = (0 until words.size).random()
+        btnKnow?.setOnClickListener {
+            val word = sortedWords[currentIndex]
+            sharedViewModel.recordReviewResult(word, true)
             isRevealed = false
+            currentIndex = (currentIndex + 1) % sortedWords.size
+            loadWord(currentIndex)
+        }
+
+        btnRetry?.setOnClickListener {
+            val word = sortedWords[currentIndex]
+            sharedViewModel.recordReviewResult(word, false)
+            isRevealed = false
+            currentIndex = (currentIndex + 1) % sortedWords.size
+            loadWord(currentIndex)
+        }
+
+        btnNext.setOnClickListener {
+            isRevealed = false
+            currentIndex = (currentIndex + 1) % sortedWords.size
             loadWord(currentIndex)
         }
 
@@ -115,5 +183,12 @@ class WordsFragment : Fragment() {
         }
 
         dialog.show()
+    }
+
+    override fun onDestroyView() {
+        tts?.stop()
+        tts?.shutdown()
+        tts = null
+        super.onDestroyView()
     }
 }

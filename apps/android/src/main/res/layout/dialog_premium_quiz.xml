@@ -15,15 +15,34 @@
         android:orientation="vertical"
         android:padding="24dp">
 
-        <TextView
-            android:id="@+id/tv_quiz_word"
+        <!-- [WORD & TTS ROW] -->
+        <LinearLayout
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="単語"
-            android:textColor="@color/md_theme_dark_secondary"
-            android:textSize="36sp"
-            android:textStyle="bold"
-            android:layout_gravity="center_horizontal" />
+            android:layout_gravity="center_horizontal"
+            android:orientation="horizontal"
+            android:gravity="center_vertical">
+
+            <TextView
+                android:id="@+id/tv_quiz_word"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="単語"
+                android:textColor="@color/md_theme_dark_secondary"
+                android:textSize="36sp"
+                android:textStyle="bold" />
+
+            <ImageView
+                android:id="@+id/btn_quiz_tts"
+                android:layout_width="40dp"
+                android:layout_height="40dp"
+                android:layout_marginStart="12dp"
+                android:src="@drawable/ic_action_volume_up"
+                android:contentDescription="Listen Pronunciation"
+                android:padding="6dp"
+                app:tint="@color/md_theme_dark_secondary"
+                android:background="?attr/selectableItemBackgroundBorderless" />
+        </LinearLayout>
 
         <TextView
             android:id="@+id/tv_quiz_context"
@@ -40,7 +59,7 @@
             android:layout_width="match_parent"
             android:layout_height="1dp"
             android:background="@color/glass_stroke"
-            android:layout_marginVertical="20dp" />
+            android:layout_marginVertical="16dp" />
 
         <TextView
             android:layout_width="wrap_content"
@@ -77,6 +96,7 @@
                 android:background="?attr/selectableItemBackgroundBorderless" />
         </FrameLayout>
 
+        <!-- [MEANING & SKIP ROW] -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -101,9 +121,39 @@
                 android:id="@+id/btn_quiz_next"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_marginStart="12dp"
+                android:layout_marginStart="10dp"
                 android:text="@string/quiz_btn_next"
                 android:backgroundTint="@color/md_theme_dark_secondary"
+                android:textColor="@color/white" />
+        </LinearLayout>
+
+        <!-- [SRS GRADING BUTTONS (알아요 / 다시 보기)] -->
+        <LinearLayout
+            android:id="@+id/layout_quiz_grade"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:layout_marginTop="10dp"
+            android:visibility="gone">
+
+            <Button
+                android:id="@+id/btn_quiz_retry"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:layout_marginEnd="6dp"
+                android:text="다시 보기"
+                android:backgroundTint="#C62828"
+                android:textColor="@color/white" />
+
+            <Button
+                android:id="@+id/btn_quiz_know"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:layout_marginStart="6dp"
+                android:text="알아요"
+                android:backgroundTint="#2E7D32"
                 android:textColor="@color/white" />
         </LinearLayout>
 
