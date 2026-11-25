@@ -15,7 +15,6 @@ object ResourceBroker {
     val layoutScript = R.layout.fragment_script
     val layoutWords = R.layout.fragment_words
     val layoutLens = R.layout.fragment_lens
-    val layoutSettings = R.layout.fragment_settings
     val layoutPremiumQuiz = R.layout.dialog_premium_quiz
 
     // --- Core Navigation IDs ---
@@ -26,7 +25,6 @@ object ResourceBroker {
     val navScript = R.id.nav_script
     val navWords = R.id.nav_words
     val navLens = R.id.nav_lens
-    val navSettings = R.id.nav_settings
 
     // --- Browser/WebView IDs ---
     val idWebView = R.id.youtube_web_view

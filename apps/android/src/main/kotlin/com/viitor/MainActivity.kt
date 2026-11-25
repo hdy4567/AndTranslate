@@ -17,7 +17,6 @@ import com.viitor.ui.tab1_browser.BrowserFragment
 import com.viitor.ui.tab2_script.ScriptFragment
 import com.viitor.ui.tab3_words.WordsFragment
 import com.viitor.ui.tab4_lens.LensFragment
-import com.viitor.ui.tab5_settings.SettingsFragment
 import com.viitor.util.ResourceBroker
 
 /**
@@ -34,7 +33,6 @@ class MainActivity : AppCompatActivity() {
     private lateinit var scriptFragment: ScriptFragment
     private lateinit var wordsFragment: WordsFragment
     private lateinit var lensFragment: LensFragment
-    private lateinit var settingsFragment: SettingsFragment
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -50,7 +48,6 @@ class MainActivity : AppCompatActivity() {
         scriptFragment = (supportFragmentManager.findFragmentByTag("SCRIPT") as? ScriptFragment) ?: ScriptFragment()
         wordsFragment = (supportFragmentManager.findFragmentByTag("WORDS") as? WordsFragment) ?: WordsFragment()
         lensFragment = (supportFragmentManager.findFragmentByTag("LENS") as? LensFragment) ?: LensFragment()
-        settingsFragment = (supportFragmentManager.findFragmentByTag("SETTINGS") as? SettingsFragment) ?: SettingsFragment()
 
         if (savedInstanceState == null) {
             supportFragmentManager.beginTransaction()
@@ -68,7 +65,6 @@ class MainActivity : AppCompatActivity() {
                 ResourceBroker.navScript -> scriptFragment
                 ResourceBroker.navWords -> wordsFragment
                 ResourceBroker.navLens -> lensFragment
-                ResourceBroker.navSettings -> settingsFragment
                 else -> browserFragment
             }
             switchFragment(nextFragment)
@@ -100,7 +96,6 @@ class MainActivity : AppCompatActivity() {
             is ScriptFragment -> "SCRIPT"
             is WordsFragment -> "WORDS"
             is LensFragment -> "LENS"
-            is SettingsFragment -> "SETTINGS"
             else -> "BROWSER"
         }
         outState.putString("ACTIVE_TAG", tag)
@@ -113,7 +108,6 @@ class MainActivity : AppCompatActivity() {
             1 -> ResourceBroker.navScript
             2 -> ResourceBroker.navWords
             3 -> ResourceBroker.navLens
-            4 -> ResourceBroker.navSettings
             else -> ResourceBroker.navBrowser
         }
         bottomNav.selectedItemId = menuId
@@ -131,7 +125,6 @@ class MainActivity : AppCompatActivity() {
                     is ScriptFragment -> "SCRIPT"
                     is WordsFragment -> "WORDS"
                     is LensFragment -> "LENS"
-                    is SettingsFragment -> "SETTINGS"
                     else -> null
                 }
                 add(ResourceBroker.idMainContainer, nextFragment, tag)

@@ -463,9 +463,29 @@ class OverlayViewManager(private val context: Context) {
         colorLayout.addView(btnColorWht)
         colorLayout.addView(btnColorPnk2)
 
+        // --- 4. Shadowing & A-B Loop Pause Switch ---
+        val savedShadowPause = prefs.getBoolean("shadow_pause_enabled", false)
+        if (savedShadowPause != GlobalSubtitleRelay.loopConfig.value.shadowPauseEnabled) {
+            GlobalSubtitleRelay.toggleShadowPause()
+        }
+        val switchShadow = android.widget.Switch(context).apply {
+            text = "섀도잉 1.5초 따라 말하기 일시정지"
+            setTextColor(Color.WHITE)
+            isChecked = GlobalSubtitleRelay.loopConfig.value.shadowPauseEnabled
+            setOnCheckedChangeListener { _, isChecked ->
+                val cur = GlobalSubtitleRelay.loopConfig.value
+                if (cur.shadowPauseEnabled != isChecked) {
+                    GlobalSubtitleRelay.toggleShadowPause()
+                }
+                prefs.edit().putBoolean("shadow_pause_enabled", isChecked).apply()
+                Log.i(TAG, "[SHADOW-PAUSE] Toggled to $isChecked")
+            }
+        }
+
         parent.addView(langLabel)
         parent.addView(modeLayout)
         parent.addView(switchPron)
+        parent.addView(switchShadow)
         parent.addView(colorLayout)
     }
 

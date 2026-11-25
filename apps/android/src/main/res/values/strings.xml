@@ -6,7 +6,6 @@
     <string name="nav_script">대본</string>
     <string name="nav_words">단어장</string>
     <string name="nav_lens">렌즈</string>
-    <string name="nav_settings">설정</string>
 
     <!-- Script Tab -->
     <string name="script_empty_placeholder">캡처된 자막이 없습니다.\n자막 엔진을 켜고 영상을 재생해보세요 !</string>
