@@ -22,6 +22,17 @@ object GlobalSubtitleRelay {
     /** [PRON3LAYER-STATE] T 버튼의 활성화 상태 동기화 */
     var isPron3LayerEnabled: Boolean = true
 
+    /** [VOCAB-HIGHLIGHT-STATE] 저장된 단어 목록 및 실시간 하이라이트 동기화 */
+    var savedVocabWords: Set<String> = emptySet()
+    var savedVocabList: List<com.viitor.data.local.VocabularyEntity> = emptyList()
+    var onVocabUpdated: (() -> Unit)? = null
+
+    fun updateSavedVocab(list: List<com.viitor.data.local.VocabularyEntity>) {
+        savedVocabList = list
+        savedVocabWords = list.map { it.word.trim() }.filter { it.isNotBlank() }.toSet()
+        onVocabUpdated?.invoke()
+    }
+
     /** [SHADOWING-AB-LOOP] 구간 반복 및 섀도잉 일시정지 설정 */
     data class LoopConfig(
         val enabled: Boolean = false,

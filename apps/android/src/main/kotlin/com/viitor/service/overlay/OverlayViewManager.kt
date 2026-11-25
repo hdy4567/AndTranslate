@@ -3,7 +3,13 @@ package com.viitor.service.overlay
 import android.content.Context
 import android.graphics.Color
 import android.graphics.PixelFormat
+import android.graphics.Typeface
 import android.os.Build
+import android.text.Spannable
+import android.text.SpannableString
+import android.text.style.BackgroundColorSpan
+import android.text.style.ForegroundColorSpan
+import android.text.style.StyleSpan
 import android.util.Log
 import android.view.Gravity
 import android.view.MotionEvent
@@ -14,6 +20,7 @@ import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.SeekBar
 import android.widget.TextView
+import android.widget.Toast
 import com.viitor.pipeline.core.GlobalSubtitleRelay
 import com.viitor.pipeline.core.SubtitleData
 
@@ -38,6 +45,8 @@ class OverlayViewManager(private val context: Context) {
     private lateinit var origin1layerView: TextView
     private lateinit var tras2layerView: TextView
     private lateinit var pron3layerView: TextView
+
+    private var lastData: SubtitleData? = null
 
     fun initOverlay() {
         windowManager = context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
@@ -85,10 +94,24 @@ class OverlayViewManager(private val context: Context) {
 
         // Subtitle Views
         origin1layerView = createSubtitleTextView(18f, Color.WHITE).apply {
-            typeface = android.graphics.Typeface.create(android.graphics.Typeface.SANS_SERIF, android.graphics.Typeface.BOLD)
+            typeface = Typeface.create(Typeface.SANS_SERIF, Typeface.BOLD)
+            // [VOCAB-POPUP] 하이라이트된 단어 터치 시 해당 단어의 저장 정보/문맥 토스트 알림
+            setOnClickListener {
+                val currentText = text?.toString().orEmpty()
+                val matched = GlobalSubtitleRelay.savedVocabList.firstOrNull { vocab ->
+                    vocab.word.isNotBlank() && currentText.contains(vocab.word, ignoreCase = true)
+                }
+                if (matched != null) {
+                    Toast.makeText(
+                        context,
+                        "★ [보관 단어] ${matched.word} : ${matched.tras2layer ?: "의미 없음"}\n문맥: ${matched.origin1layer ?: "문맥 없음"}",
+                        Toast.LENGTH_LONG
+                    ).show()
+                }
+            }
         }
         tras2layerView = createSubtitleTextView(18f, Color.parseColor("#FF4081")).apply {
-            typeface = android.graphics.Typeface.create(android.graphics.Typeface.SANS_SERIF, android.graphics.Typeface.BOLD)
+            typeface = Typeface.create(Typeface.SANS_SERIF, Typeface.BOLD)
             maxLines = 4
             ellipsize = android.text.TextUtils.TruncateAt.END
         }
@@ -109,6 +132,15 @@ class OverlayViewManager(private val context: Context) {
         root.addView(subtitleContainer)
         root.addView(settingsContainer)
 
+        // [VOCAB-HIGHLIGHT-LISTENER] 단어장 변경 시 오버레이 실시간 갱신
+        GlobalSubtitleRelay.onVocabUpdated = {
+            lastData?.let { data ->
+                origin1layerView.post {
+                    updateSubtitles(data)
+                }
+            }
+        }
+
         try {
             windowManager?.addView(root, params)
             Log.i(TAG, "[STREAM] Premium Unified Overlay Dashboard Deployed")
@@ -117,14 +149,50 @@ class OverlayViewManager(private val context: Context) {
         }
     }
 
+    private fun highlightVocabWords(text: String): CharSequence {
+        val savedWords = GlobalSubtitleRelay.savedVocabWords
+        if (savedWords.isEmpty() || text.isBlank()) return text
+
+        val spannable = SpannableString(text)
+        for (word in savedWords) {
+            if (word.length < 2 && !word.any { it.isLetter() }) continue
+            var startIndex = text.indexOf(word, ignoreCase = true)
+            while (startIndex >= 0) {
+                val endIndex = startIndex + word.length
+                spannable.setSpan(
+                    BackgroundColorSpan(Color.parseColor("#FFE57F")), // 형광 하이라이트 (노랑)
+                    startIndex,
+                    endIndex,
+                    Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
+                )
+                spannable.setSpan(
+                    ForegroundColorSpan(Color.parseColor("#1B1B1B")), // 가독성 블랙
+                    startIndex,
+                    endIndex,
+                    Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
+                )
+                spannable.setSpan(
+                    StyleSpan(Typeface.BOLD),
+                    startIndex,
+                    endIndex,
+                    Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
+                )
+                startIndex = text.indexOf(word, endIndex, ignoreCase = true)
+            }
+        }
+        return spannable
+    }
+
     fun updateSubtitles(data: SubtitleData) {
-        origin1layerView.text = data.origin1layer
+        lastData = data
+        origin1layerView.text = highlightVocabWords(data.origin1layer)
         tras2layerView.text = data.tras2layer
         pron3layerView.text = data.pron3layer
         Log.d(TAG, "[OVERLAY] UI updated: origin=${data.origin1layer.take(20)}")
     }
 
     fun destroy() {
+        GlobalSubtitleRelay.onVocabUpdated = null
         containerView?.let {
             try {
                 windowManager?.removeView(it)

@@ -1,47 +1,58 @@
 package com.viitor.ui.tab2_script
 
 import android.graphics.Color
+import android.graphics.Typeface
 import android.util.Log
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.TextView
-import androidx.recyclerview.widget.RecyclerView
-import com.viitor.R
-import com.viitor.ui.tab1_browser.domain.GoogleTranslationAgent
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.lifecycleScope
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
+import androidx.recyclerview.widget.RecyclerView
+import com.viitor.R
+import com.viitor.data.local.VocabularyEntity
+import com.viitor.pipeline.core.GlobalSubtitleRelay
+import com.viitor.pipeline.core.JapanesePronunciationAgent
+import com.viitor.pipeline.core.MorphemeAgent
+import com.viitor.pipeline.core.SubtitleData
+import com.viitor.ui.tab1_browser.domain.GoogleTranslationAgent
+import com.viitor.util.DictActionUtil
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 
 class ScriptAdapter(
     private val onLineClicked: (Long) -> Unit,
-    private val onLineLongClicked: ((com.viitor.pipeline.core.SubtitleData) -> Unit)? = null
+    private val onLineLongClicked: ((SubtitleData) -> Unit)? = null,
+    private val onWarpToVocabContext: ((String?, Long) -> Unit)? = null
 ) : RecyclerView.Adapter<ScriptAdapter.ScriptViewHolder>() {
 
     var currentVideoId: String? = null
-    private var items = listOf<com.viitor.pipeline.core.SubtitleData>()
+    private var items = listOf<SubtitleData>()
     private val translationAgent = GoogleTranslationAgent()
     private val inFlightTranslations = mutableSetOf<String>()
 
-    fun getItems(): List<com.viitor.pipeline.core.SubtitleData> = items
+    private var savedVocabList = listOf<VocabularyEntity>()
+    private var savedVocabWords = setOf<String>()
 
-    // 최적화: 전체 갱신(Lag 발생 방지)을 피하기 위한 현재/과거 인덱스 추적기
+    fun getItems(): List<SubtitleData> = items
+
     private var currentActiveIndex = -1
 
-    fun submitList(newList: List<com.viitor.pipeline.core.SubtitleData>) {
+    fun submitList(newList: List<SubtitleData>) {
         items = newList
         currentActiveIndex = -1
+        notifyDataSetChanged()
+    }
+
+    fun setSavedWords(list: List<VocabularyEntity>) {
+        savedVocabList = list
+        savedVocabWords = list.map { it.word.trim() }.filter { it.isNotBlank() }.toSet()
         notifyDataSetChanged()
     }
 
     fun updateSyncTime(timeMs: Long, layoutManager: androidx.recyclerview.widget.LinearLayoutManager? = null) {
         if (items.isEmpty()) return
 
-        // 이진 탐색 수준의 빠른 인덱스 찾기 함수 호출 등 응용 가능
-        // 가장 직관적인 성능 확보: 시간대에 맞는 새 인덱스 스캔
         var newIndex = -1
         for (i in items.indices) {
             val isCurrent = if (i < items.size - 1) {
@@ -56,16 +67,13 @@ class ScriptAdapter(
             }
         }
 
-        // 인덱스가 바뀌었을 때만 UI를 그려줌 (초당 수십 번의 갱신 무시)
         if (newIndex != -1 && newIndex != currentActiveIndex) {
             val oldIndex = currentActiveIndex
             currentActiveIndex = newIndex
 
-            // [메모리 최적화] 바뀐 단 두 개의 행만 부분 렌더링
             if (oldIndex != -1) notifyItemChanged(oldIndex)
             notifyItemChanged(currentActiveIndex)
 
-            // UI 스크롤을 현재 말하는 문장으로 부드럽게 자동 점프시킴
             layoutManager?.scrollToPositionWithOffset(currentActiveIndex, 200)
         }
     }
@@ -96,19 +104,32 @@ class ScriptAdapter(
             return String.format("%02d:%02d", min, sec)
         }
 
-        fun bind(line: com.viitor.pipeline.core.SubtitleData, isCurrent: Boolean) {
-            // [WORD-CHIP-DECOMPOSITION] 형태소 분석 엔진 연결
+        fun bind(line: SubtitleData, isCurrent: Boolean) {
             flexJp.removeAllViews()
-            val tokens = com.viitor.pipeline.core.MorphemeAgent.tokenize(line.origin1layer)
+            val tokens = MorphemeAgent.tokenize(line.origin1layer)
             
             tokens.forEach { token ->
+                val trimmedToken = token.trim()
+                val isSavedVocab = savedVocabWords.contains(trimmedToken) || 
+                        savedVocabWords.any { it.isNotBlank() && trimmedToken.contains(it, ignoreCase = true) }
+
                 val chip = TextView(itemView.context).apply {
                     text = token
                     textSize = 16f
                     setPadding(12, 6, 12, 6)
-                    setTextColor(if (isCurrent) Color.parseColor("#FF4081") else Color.WHITE)
                     
-                    // [INTERACTION-GATEWAY] 단어 클릭 시 프리미엄 팝업 노출
+                    if (isSavedVocab) {
+                        // [VOCAB-HIGHLIGHT] 내가 저장한 단어는 형광 하이라이트 (노랑 배경 + 블랙 텍스트 볼드)
+                        setBackgroundColor(Color.parseColor("#FFE57F"))
+                        setTextColor(Color.parseColor("#1B1B1B"))
+                        typeface = Typeface.DEFAULT_BOLD
+                    } else {
+                        setBackgroundColor(Color.TRANSPARENT)
+                        setTextColor(if (isCurrent) Color.parseColor("#FF4081") else Color.WHITE)
+                        typeface = Typeface.DEFAULT
+                    }
+                    
+                    // [INTERACTION-GATEWAY] 단어 클릭 시 프리미엄 팝업 노출 (저장 당시 문맥 포함)
                     setOnClickListener { 
                         showWordActionDialog(token, line.origin1layer, line.tras2layer, line.anchorTimeMs)
                     }
@@ -121,21 +142,20 @@ class ScriptAdapter(
             // [OPTIMIZATION] 이미 번역/발음 정보가 있다면 즉시 표시
             if (line.tras2layer != null) {
                 tvKo.text = line.tras2layer
-                // [COLOR-SYNC] 오버레이 설정과 연동된 색상 적용
-                tvKo.setTextColor(com.viitor.pipeline.core.GlobalSubtitleRelay.currentTras2LayerColor)
+                tvKo.setTextColor(GlobalSubtitleRelay.currentTras2LayerColor)
             } else {
                 val originKey = line.origin1layer
                 if (!inFlightTranslations.contains(originKey)) {
                     inFlightTranslations.add(originKey)
                     tvKo.text = "번역 불러오는 중..."
-                    (itemView.context as? androidx.lifecycle.LifecycleOwner)?.lifecycleScope?.launch {
+                    (itemView.context as? LifecycleOwner)?.lifecycleScope?.launch {
                         try {
                             val res = translationAgent.fetchFullTranslation(originKey)
                             if (res.first.isNotBlank()) {
                                 tvKo.text = res.first
                                 line.tras2layer = res.first
                                 val hangulPron = if (res.second.isNotBlank()) {
-                                    com.viitor.pipeline.core.JapanesePronunciationAgent.convertRomajiToHangul(res.second)
+                                    JapanesePronunciationAgent.convertRomajiToHangul(res.second)
                                 } else ""
                                 line.pron3layer = hangulPron
                                 if (hangulPron.isNotBlank()) {
@@ -163,13 +183,13 @@ class ScriptAdapter(
                 tvPron.visibility = View.GONE
             }
 
-            val loop = com.viitor.pipeline.core.GlobalSubtitleRelay.loopConfig.value
+            val loop = GlobalSubtitleRelay.loopConfig.value
             val isInLoop = loop.enabled && line.anchorTimeMs >= loop.startMs && line.anchorTimeMs <= loop.endMs
 
             if (isCurrent) {
                 itemView.setBackgroundColor(Color.parseColor("#33FF4081"))
             } else if (isInLoop) {
-                itemView.setBackgroundColor(Color.parseColor("#2664B5F6")) // 섀도잉 루프 구간 하이라이트
+                itemView.setBackgroundColor(Color.parseColor("#2664B5F6"))
             } else {
                 itemView.setBackgroundColor(Color.TRANSPARENT)
             }
@@ -184,23 +204,44 @@ class ScriptAdapter(
             }
         }
 
-        /** [PREMIUM-ACTION] 단어별 사전/저장/닫기 팝업 UI (Deep Black & Blue design) */
+        /** [PREMIUM-ACTION] 단어별 사전/저장/문맥 복원 팝업 UI */
         private fun showWordActionDialog(token: String, origin1layer: String, tras2layer: String?, anchorTimeMs: Long) {
             val ctx = itemView.context
             val builder = androidx.appcompat.app.AlertDialog.Builder(ctx, com.google.android.material.R.style.Theme_Material3_Dark_Dialog_Alert)
             
-            builder.setTitle(token)
-            // [CONTEXT-MAPPING] 별도의 단어 번역 없이, 이미 존재하는 문장 해석본을 문맥으로 보여줌 (최적화)
-            builder.setMessage("문맥: ${tras2layer ?: "번역 없음"}\n\n이 단어를 단어장에 보관하시겠습니까?")
+            val trimmed = token.trim()
+            val matchedEntity = savedVocabList.find { 
+                it.word.equals(trimmed, ignoreCase = true) || trimmed.contains(it.word, ignoreCase = true) 
+            }
+
+            if (matchedEntity != null) {
+                builder.setTitle("★ [보관된 단어] $token")
+                builder.setMessage(
+                    "현재 번역: ${tras2layer ?: "번역 없음"}\n\n" +
+                    "📌 [단어장 저장 당시 문맥]\n${matchedEntity.origin1layer ?: "저장된 문맥이 없습니다."}\n\n" +
+                    "📌 [단어장 저장 당시 번역]\n${matchedEntity.tras2layer ?: "해석 없음"}"
+                )
+                if (matchedEntity.anchorTimeMs > 0L) {
+                    builder.setNeutralButton("저장 문맥으로 이동 (${formatTime(matchedEntity.anchorTimeMs)})") { _, _ ->
+                        onWarpToVocabContext?.invoke(matchedEntity.videoId, matchedEntity.anchorTimeMs)
+                    }
+                } else {
+                    builder.setNeutralButton("닫기", null)
+                }
+            } else {
+                builder.setTitle(token)
+                builder.setMessage("문맥: ${tras2layer ?: "번역 없음"}\n\n이 단어를 단어장에 보관하시겠습니까?")
+                builder.setNeutralButton("닫기", null)
+            }
             
             builder.setPositiveButton("네이버 사전") { _, _ ->
-                com.viitor.util.DictActionUtil.openNaverDict(ctx, token)
+                DictActionUtil.openNaverDict(ctx, token)
             }
-            builder.setNegativeButton("단어장에 저장") { _, _ ->
-                com.viitor.util.DictActionUtil.saveToVault(
+            builder.setNegativeButton(if (matchedEntity != null) "단어장 갱신" else "단어장에 저장") { _, _ ->
+                DictActionUtil.saveToVault(
                     ctx, 
                     token, 
-                    tras2layer, // 문장 해석본을 단어의 의미로 매핑
+                    tras2layer,
                     origin1layer, 
                     anchorTimeMs,
                     "Tab2_Script",
@@ -208,14 +249,13 @@ class ScriptAdapter(
                 )
                 android.widget.Toast.makeText(ctx, "단어장에 저장되었습니다.", android.widget.Toast.LENGTH_SHORT).show()
             }
-            builder.setNeutralButton("닫기", null)
             
             val dialog = builder.create()
             dialog.show()
             
             dialog.getButton(androidx.appcompat.app.AlertDialog.BUTTON_POSITIVE).setTextColor(Color.parseColor("#64B5F6"))
-            dialog.getButton(androidx.appcompat.app.AlertDialog.BUTTON_NEGATIVE).setTextColor(Color.parseColor("#FF4081")) // Save (Aura Pink)
-            dialog.getButton(androidx.appcompat.app.AlertDialog.BUTTON_NEUTRAL).setTextColor(Color.parseColor("#A0A0A0"))
+            dialog.getButton(androidx.appcompat.app.AlertDialog.BUTTON_NEGATIVE).setTextColor(Color.parseColor("#FF4081"))
+            dialog.getButton(androidx.appcompat.app.AlertDialog.BUTTON_NEUTRAL).setTextColor(Color.parseColor("#FFD54F"))
         }
     }
 }

@@ -12,6 +12,7 @@ import androidx.fragment.app.activityViewModels
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
+import com.viitor.MainActivity
 import com.viitor.ui.SharedSyncViewModel
 import com.viitor.util.ResourceBroker
 import kotlinx.coroutines.Job
@@ -50,6 +51,11 @@ class ScriptFragment : Fragment() {
             },
             onLineLongClicked = { line ->
                 showAbLoopDialog(line)
+            },
+            onWarpToVocabContext = { videoId, timeMs ->
+                sharedViewModel.warpToWord(videoId, timeMs)
+                (activity as? MainActivity)?.navigateToTab(0)
+                Toast.makeText(requireContext(), "단어 저장 문맥으로 이동합니다.", Toast.LENGTH_SHORT).show()
             }
         )
 
@@ -109,6 +115,13 @@ class ScriptFragment : Fragment() {
         viewLifecycleOwner.lifecycleScope.launch {
             com.viitor.pipeline.core.GlobalSubtitleRelay.loopConfig.collectLatest {
                 adapter.notifyDataSetChanged()
+            }
+        }
+
+        // [VOCAB-HIGHLIGHT-SYNC] 단어장 변경 시 대본 내 단어 형광 하이라이트 실시간 갱신
+        viewLifecycleOwner.lifecycleScope.launch {
+            sharedViewModel.savedWordsList.collectLatest { list ->
+                adapter.setSavedWords(list)
             }
         }
     }
