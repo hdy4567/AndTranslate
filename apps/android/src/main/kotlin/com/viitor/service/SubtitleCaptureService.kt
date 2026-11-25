@@ -11,11 +11,16 @@ import android.os.IBinder
 import android.os.Looper
 import android.util.Log
 import androidx.core.app.NotificationCompat
+import com.viitor.data.local.ViitorLocalDatabase
 import com.viitor.pipeline.core.GlobalSubtitleRelay
 import com.viitor.pipeline.core.PipelineEngine
 import com.viitor.pipeline.core.SmartSubtitleAgent
 import com.viitor.pipeline.core.SubtitleData
 import com.viitor.service.overlay.OverlayViewManager
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.launch
 
 /**
  * [SubtitleCaptureService] (Standard Ignition - Decoupled Architecture)
@@ -32,6 +37,8 @@ class SubtitleCaptureService : Service() {
     private val engine = PipelineEngine(agent)
     private val mainHandler = Handler(Looper.getMainLooper())
     private var overlayViewManager: OverlayViewManager? = null
+    private val serviceJob = Job()
+    private val serviceScope = CoroutineScope(Dispatchers.IO + serviceJob)
 
     override fun onCreate() {
         super.onCreate()
@@ -55,6 +62,13 @@ class SubtitleCaptureService : Service() {
 
         // 2. 외부 OCR/추출 에이전트 스트림 연결
         agent.onSubtitleResult = streamListener
+
+        // 3. 단어장 실시간 감시 및 오버레이 하이라이트 동기화
+        serviceScope.launch {
+            ViitorLocalDatabase.getDatabase(applicationContext).vocabularyDao().getAllWords().collect { words ->
+                GlobalSubtitleRelay.updateSavedVocab(words)
+            }
+        }
 
         engine.ignite()
     }
@@ -90,6 +104,7 @@ class SubtitleCaptureService : Service() {
     }
 
     override fun onDestroy() {
+        serviceJob.cancel()
         overlayViewManager?.destroy()
         overlayViewManager = null
         engine.shutdown()

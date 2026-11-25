@@ -12,6 +12,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
@@ -41,6 +42,15 @@ class SharedSyncViewModel(application: Application) : AndroidViewModel(applicati
 
     private val _translationColor = MutableStateFlow(android.graphics.Color.WHITE)
     val translationColor: StateFlow<Int> = _translationColor
+
+    init {
+        // [VOCAB-HIGHLIGHT-SYNC] 단어장 변경 사항을 전역 자막 릴레이에 실시간 전파
+        viewModelScope.launch {
+            savedWordsList.collectLatest { list ->
+                GlobalSubtitleRelay.updateSavedVocab(list)
+            }
+        }
+    }
 
     fun recordReviewResult(entity: VocabularyEntity, isKnown: Boolean) {
         viewModelScope.launch {
