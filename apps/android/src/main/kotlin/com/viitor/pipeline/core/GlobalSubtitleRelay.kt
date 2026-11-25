@@ -22,6 +22,40 @@ object GlobalSubtitleRelay {
     /** [PRON3LAYER-STATE] T 버튼의 활성화 상태 동기화 */
     var isPron3LayerEnabled: Boolean = true
 
+    /** [SHADOWING-AB-LOOP] 구간 반복 및 섀도잉 일시정지 설정 */
+    data class LoopConfig(
+        val enabled: Boolean = false,
+        val startMs: Long = 0L,
+        val endMs: Long = 0L,
+        val shadowPauseEnabled: Boolean = false,
+        val shadowPauseMs: Long = 1500L
+    )
+
+    private val _loopConfig = kotlinx.coroutines.flow.MutableStateFlow(LoopConfig())
+    val loopConfig: kotlinx.coroutines.flow.StateFlow<LoopConfig> = _loopConfig
+
+    fun setAbLoop(startMs: Long, endMs: Long, shadowPause: Boolean = _loopConfig.value.shadowPauseEnabled) {
+        val safeStart = minOf(startMs, endMs).coerceAtLeast(0L)
+        val safeEnd = maxOf(startMs, endMs).coerceAtLeast(safeStart + 1000L)
+        _loopConfig.value = _loopConfig.value.copy(
+            enabled = true,
+            startMs = safeStart,
+            endMs = safeEnd,
+            shadowPauseEnabled = shadowPause
+        )
+        Log.i(TAG, "[AB-LOOP] Enabled: $safeStart ms -> $safeEnd ms (shadowPause=$shadowPause)")
+    }
+
+    fun toggleShadowPause() {
+        val cur = _loopConfig.value
+        _loopConfig.value = cur.copy(shadowPauseEnabled = !cur.shadowPauseEnabled)
+    }
+
+    fun clearAbLoop() {
+        _loopConfig.value = LoopConfig(shadowPauseEnabled = _loopConfig.value.shadowPauseEnabled)
+        Log.i(TAG, "[AB-LOOP] Cleared.")
+    }
+
     /** [TRANSLATION-MODE] 지원 번역 모드: 일본어 -> 한국어, 영어 -> 한국어 */
     enum class TranslationMode(
         val sourceLang: String,
@@ -162,6 +196,7 @@ object GlobalSubtitleRelay {
     fun flush() {
         bufferRegistry.clear()
         _transcriptRegistry.value = emptyList()
+        clearAbLoop()
         onNewData?.invoke(SubtitleData.empty())
         Log.i(TAG, "[FLUSH-SSOT] Global Subtitle State Reset.")
     }
