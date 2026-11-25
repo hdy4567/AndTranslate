@@ -74,7 +74,9 @@ class ScriptAdapter(
             if (oldIndex != -1) notifyItemChanged(oldIndex)
             notifyItemChanged(currentActiveIndex)
 
-            layoutManager?.scrollToPositionWithOffset(currentActiveIndex, 200)
+            if (GlobalSubtitleRelay.isScriptAutoScrollEnabled) {
+                layoutManager?.scrollToPositionWithOffset(currentActiveIndex, 200)
+            }
         }
     }
 
@@ -110,8 +112,8 @@ class ScriptAdapter(
             
             tokens.forEach { token ->
                 val trimmedToken = token.trim()
-                val isSavedVocab = savedVocabWords.contains(trimmedToken) || 
-                        savedVocabWords.any { it.isNotBlank() && trimmedToken.contains(it, ignoreCase = true) }
+                val isSavedVocab = GlobalSubtitleRelay.isVocabHighlightEnabled && (savedVocabWords.contains(trimmedToken) || 
+                        savedVocabWords.any { it.isNotBlank() && trimmedToken.contains(it, ignoreCase = true) })
 
                 val chip = TextView(itemView.context).apply {
                     text = token

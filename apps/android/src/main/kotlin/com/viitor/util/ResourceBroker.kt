@@ -29,11 +29,13 @@ object ResourceBroker {
     // --- Browser/WebView IDs ---
     val idWebView = R.id.youtube_web_view
     val idOverlayToggle = R.id.btn_overlay_toggle
+    val idBrowserAbLoop = R.id.btn_browser_ab_loop
 
     // --- Script/Vault IDs ---
     val idScriptList = R.id.rv_script_list
     val idScriptLoading = R.id.pb_script_loading
     val idScriptEmpty = R.id.tv_script_empty_placeholder
+    val idScriptAutoScrollSwitch = R.id.switch_script_autoscroll
     val idScriptItemTime = R.id.tv_item_time
     val idScriptItemFlex = R.id.flex_item_jp
     val idScriptItemKo = R.id.tv_item_ko

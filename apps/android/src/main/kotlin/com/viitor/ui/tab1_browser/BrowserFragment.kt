@@ -94,6 +94,7 @@ class BrowserFragment : Fragment() {
         super.onViewCreated(view, savedInstanceState)
         setupWebView()
         setupOverlayToggleBtn(view)
+        setupAbLoopButton(view)
         observeViewModel()
         memoryManager.startIdleTimer()
     }
@@ -254,6 +255,67 @@ class BrowserFragment : Fragment() {
         engine?.let { webView?.evaluateJavascript(it.shutdownScript, null) }
         viewModel.shutdownEngine()
         Toast.makeText(requireContext(), "엔진 완전 셧다운 완료", Toast.LENGTH_LONG).show()
+    }
+
+    private var abLoopState = 0 // 0: IDLE, 1: POINT_A_SET, 2: LOOPING
+    private var tempPointAMs = 0L
+
+    private fun formatTime(ms: Long): String {
+        val totalSec = ms / 1000
+        val min = totalSec / 60
+        val sec = totalSec % 60
+        return String.format("%02d:%02d", min, sec)
+    }
+
+    private fun setupAbLoopButton(view: View) {
+        val btnAbLoop = view.findViewById<com.google.android.material.button.MaterialButton>(ResourceBroker.idBrowserAbLoop)
+        btnAbLoop?.setOnClickListener {
+            val curTime = viewModel.currentTimeMs.value
+            when (abLoopState) {
+                0 -> {
+                    tempPointAMs = curTime
+                    abLoopState = 1
+                    btnAbLoop.text = "[A] ${formatTime(tempPointAMs)} ➔ B 설정"
+                    btnAbLoop.strokeColor = android.content.res.ColorStateList.valueOf(android.graphics.Color.parseColor("#FFB300"))
+                    btnAbLoop.setBackgroundColor(android.graphics.Color.parseColor("#E6332800"))
+                    Toast.makeText(requireContext(), "시작점 A (${formatTime(tempPointAMs)}) 지정됨. 종료 지점에서 다시 누르세요.", Toast.LENGTH_SHORT).show()
+                }
+                1 -> {
+                    val pointBMs = if (curTime > tempPointAMs) curTime else tempPointAMs + 3000L
+                    com.viitor.pipeline.core.GlobalSubtitleRelay.setAbLoop(tempPointAMs, pointBMs)
+                    abLoopState = 2
+                    btnAbLoop.text = "🔁 ${formatTime(tempPointAMs)}~${formatTime(pointBMs)}"
+                    btnAbLoop.strokeColor = android.content.res.ColorStateList.valueOf(android.graphics.Color.parseColor("#4CAF50"))
+                    btnAbLoop.setBackgroundColor(android.graphics.Color.parseColor("#E61B3A24"))
+                    Toast.makeText(requireContext(), "🔁 A-B 루프 활성화: ${formatTime(tempPointAMs)} ~ ${formatTime(pointBMs)}", Toast.LENGTH_SHORT).show()
+                }
+                2 -> {
+                    com.viitor.pipeline.core.GlobalSubtitleRelay.clearAbLoop()
+                    abLoopState = 0
+                    btnAbLoop.text = "[A-B] 구간 반복"
+                    btnAbLoop.strokeColor = android.content.res.ColorStateList.valueOf(android.graphics.Color.parseColor("#55FFFFFF"))
+                    btnAbLoop.setBackgroundColor(android.graphics.Color.parseColor("#D91E1E1E"))
+                    Toast.makeText(requireContext(), "구간 반복 해제됨", Toast.LENGTH_SHORT).show()
+                }
+            }
+        }
+
+        // LoopConfig 상태 관찰하여 외부에서 루프 해제/설정 시에도 동기화
+        viewLifecycleOwner.lifecycleScope.launch {
+            com.viitor.pipeline.core.GlobalSubtitleRelay.loopConfig.collectLatest { config ->
+                if (!config.enabled && abLoopState == 2) {
+                    abLoopState = 0
+                    btnAbLoop?.text = "[A-B] 구간 반복"
+                    btnAbLoop?.strokeColor = android.content.res.ColorStateList.valueOf(android.graphics.Color.parseColor("#55FFFFFF"))
+                    btnAbLoop?.setBackgroundColor(android.graphics.Color.parseColor("#D91E1E1E"))
+                } else if (config.enabled && abLoopState != 2) {
+                    abLoopState = 2
+                    btnAbLoop?.text = "🔁 ${formatTime(config.startMs)}~${formatTime(config.endMs)}"
+                    btnAbLoop?.strokeColor = android.content.res.ColorStateList.valueOf(android.graphics.Color.parseColor("#4CAF50"))
+                    btnAbLoop?.setBackgroundColor(android.graphics.Color.parseColor("#E61B3A24"))
+                }
+            }
+        }
     }
 
     private fun observeViewModel() {
