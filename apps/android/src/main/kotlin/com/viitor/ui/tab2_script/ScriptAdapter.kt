@@ -17,13 +17,16 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 class ScriptAdapter(
-    private val onLineClicked: (Long) -> Unit
+    private val onLineClicked: (Long) -> Unit,
+    private val onLineLongClicked: ((com.viitor.pipeline.core.SubtitleData) -> Unit)? = null
 ) : RecyclerView.Adapter<ScriptAdapter.ScriptViewHolder>() {
 
     var currentVideoId: String? = null
     private var items = listOf<com.viitor.pipeline.core.SubtitleData>()
     private val translationAgent = GoogleTranslationAgent()
     private val inFlightTranslations = mutableSetOf<String>()
+
+    fun getItems(): List<com.viitor.pipeline.core.SubtitleData> = items
 
     // 최적화: 전체 갱신(Lag 발생 방지)을 피하기 위한 현재/과거 인덱스 추적기
     private var currentActiveIndex = -1
@@ -160,14 +163,24 @@ class ScriptAdapter(
                 tvPron.visibility = View.GONE
             }
 
+            val loop = com.viitor.pipeline.core.GlobalSubtitleRelay.loopConfig.value
+            val isInLoop = loop.enabled && line.anchorTimeMs >= loop.startMs && line.anchorTimeMs <= loop.endMs
+
             if (isCurrent) {
                 itemView.setBackgroundColor(Color.parseColor("#33FF4081"))
+            } else if (isInLoop) {
+                itemView.setBackgroundColor(Color.parseColor("#2664B5F6")) // 섀도잉 루프 구간 하이라이트
             } else {
                 itemView.setBackgroundColor(Color.TRANSPARENT)
             }
 
             itemView.setOnClickListener {
                 onLineClicked(line.anchorTimeMs)
+            }
+
+            itemView.setOnLongClickListener {
+                onLineLongClicked?.invoke(line)
+                true
             }
         }
 

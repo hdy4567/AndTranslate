@@ -41,6 +41,7 @@ class BrowserFragment : Fragment() {
     
     private var webView: WebView? = null
     private var isOverlayActive = true
+    private var isShadowPausing = false
 
     // 5초 셧다운 데스 타이머 예약 객체 (Side Bubble 또는 전역 셧다운 발생시 사용)
     private var shutdownTimerJob: Job? = null
@@ -267,6 +268,25 @@ class BrowserFragment : Fragment() {
             Log.e("BrowserFragment", "⚠️ [ENGINE-SWAP] VOD Engine signaled failure. Swapping to LIVE OMEGA...")
             lifecycleScope.launch {
                 webView?.evaluateJavascript(com.viitor.hijack.YoutubeLiveHijackEngine.injectScript, null)
+            }
+        }
+
+        // [AB-LOOP & SHADOW-PAUSE] 재생 시간 감시 후 종료점(B) 도달 시 시작점(A)으로 루프
+        viewLifecycleOwner.lifecycleScope.launch {
+            viewModel.currentTimeMs.collectLatest { timeMs ->
+                sharedViewModel.broadcastRealtimeSync(timeMs)
+                val loop = com.viitor.pipeline.core.GlobalSubtitleRelay.loopConfig.value
+                if (loop.enabled && timeMs >= loop.endMs && !isShadowPausing) {
+                    if (loop.shadowPauseEnabled) {
+                        isShadowPausing = true
+                        webView?.evaluateJavascript("var v=document.querySelector('video'); if(v) v.pause();", null)
+                        kotlinx.coroutines.delay(loop.shadowPauseMs)
+                        webView?.evaluateJavascript("if(window.andTransShadow) window.andTransShadow.seekTo(${loop.startMs});", null)
+                        isShadowPausing = false
+                    } else {
+                        webView?.evaluateJavascript("if(window.andTransShadow) window.andTransShadow.seekTo(${loop.startMs});", null)
+                    }
+                }
             }
         }
 
