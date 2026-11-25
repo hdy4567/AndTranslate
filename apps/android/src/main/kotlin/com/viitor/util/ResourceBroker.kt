@@ -37,6 +37,7 @@ object ResourceBroker {
     val idScriptItemTime = R.id.tv_item_time
     val idScriptItemFlex = R.id.flex_item_jp
     val idScriptItemKo = R.id.tv_item_ko
+    val idScriptAutoScrollToggle = R.id.toggle_script_auto_scroll
 
     // --- Words/Vault IDs ---
     val idWordsList = R.id.rv_words

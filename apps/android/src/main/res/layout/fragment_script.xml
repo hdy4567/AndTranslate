@@ -5,6 +5,14 @@
     android:layout_height="match_parent"
     android:background="@color/md_theme_dark_background">
 
+    <!-- 상단 대본 헤더 바 (재사용 SettingToggleItemView 컴포넌트) -->
+    <com.viitor.ui.common.SettingToggleItemView
+        android:id="@+id/toggle_script_auto_scroll"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:background="@color/md_theme_dark_surface"
+        app:layout_constraintTop_toTopOf="parent" />
+
     <!-- 캡처된 자막이 없을 때 표시되는 프리미엄 Placeholder -->
     <TextView
         android:id="@+id/tv_script_empty_placeholder"
@@ -17,7 +25,7 @@
         android:textSize="15sp"
         android:lineSpacingExtra="4dp"
         android:visibility="gone"
-        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/toggle_script_auto_scroll"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent" />
@@ -25,9 +33,11 @@
     <androidx.recyclerview.widget.RecyclerView
         android:id="@+id/rv_script_list"
         android:layout_width="match_parent"
-        android:layout_height="match_parent"
+        android:layout_height="0dp"
         android:clipToPadding="false"
-        android:padding="16dp" />
+        android:padding="16dp"
+        app:layout_constraintTop_toBottomOf="@id/toggle_script_auto_scroll"
+        app:layout_constraintBottom_toBottomOf="parent" />
 
     <!-- 대본 로딩 인디케이터 -->
     <ProgressBar
@@ -35,7 +45,7 @@
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:indeterminateTint="@color/md_theme_dark_secondary"
-        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/toggle_script_auto_scroll"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent" />

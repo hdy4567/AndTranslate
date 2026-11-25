@@ -18,16 +18,17 @@ import android.view.WindowManager
 import android.view.WindowManager.LayoutParams
 import android.widget.Button
 import android.widget.LinearLayout
+import android.widget.ScrollView
 import android.widget.SeekBar
 import android.widget.TextView
 import android.widget.Toast
 import com.viitor.pipeline.core.GlobalSubtitleRelay
 import com.viitor.pipeline.core.SubtitleData
+import com.viitor.ui.common.SettingToggleItemView
 
 /**
  * [OverlayViewManager]
  * Manages the floating overlay window lifecycle, UI hierarchy, and touch/pinch-to-scale gestures.
- * Decoupled from SubtitleCaptureService to ensure Single Responsibility Principle.
  */
 class OverlayViewManager(private val context: Context) {
 
@@ -38,6 +39,7 @@ class OverlayViewManager(private val context: Context) {
     private var windowManager: WindowManager? = null
     private var containerView: LinearLayout? = null
     private lateinit var subtitleContainer: LinearLayout
+    private lateinit var settingsScrollContainer: ScrollView
     private lateinit var settingsContainer: LinearLayout
     private lateinit var alphaSliderContainer: LinearLayout
 
@@ -46,6 +48,7 @@ class OverlayViewManager(private val context: Context) {
     private lateinit var tras2layerView: TextView
     private lateinit var pron3layerView: TextView
 
+    private var pronToggleView: SettingToggleItemView? = null
     private var lastData: SubtitleData? = null
 
     fun initOverlay() {
@@ -67,7 +70,7 @@ class OverlayViewManager(private val context: Context) {
         params.x = 50
         params.y = 500
 
-        // 1. Root Container (Draggable & Scalable)
+        // 1. Root Container
         val root = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
             setBackgroundColor(Color.parseColor("#E62C2C2C")) // Premium Gray-Glass
@@ -86,16 +89,25 @@ class OverlayViewManager(private val context: Context) {
 
         // 4. Subtitle and Settings Containers
         subtitleContainer = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
+        
         settingsContainer = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
+            setPadding(10, 10, 10, 10)
+        }
+
+        settingsScrollContainer = ScrollView(context).apply {
             visibility = View.GONE
-            setPadding(20, 20, 20, 20)
+            addView(settingsContainer)
         }
 
         // Subtitle Views
-        origin1layerView = createSubtitleTextView(18f, Color.WHITE).apply {
+        val prefs = context.getSharedPreferences("viitor_overlay_prefs", Context.MODE_PRIVATE)
+        val savedTextSize = prefs.getFloat("subtitle_text_size", 18f)
+        val savedColor = prefs.getInt("subtitle_color", Color.parseColor("#FF4081"))
+        GlobalSubtitleRelay.currentTras2LayerColor = savedColor
+
+        origin1layerView = createSubtitleTextView(savedTextSize, Color.WHITE).apply {
             typeface = Typeface.create(Typeface.SANS_SERIF, Typeface.BOLD)
-            // [VOCAB-POPUP] 하이라이트된 단어 터치 시 해당 단어의 저장 정보/문맥 토스트 알림
             setOnClickListener {
                 val currentText = text?.toString().orEmpty()
                 val matched = GlobalSubtitleRelay.savedVocabList.firstOrNull { vocab ->
@@ -110,12 +122,12 @@ class OverlayViewManager(private val context: Context) {
                 }
             }
         }
-        tras2layerView = createSubtitleTextView(18f, Color.parseColor("#FF4081")).apply {
+        tras2layerView = createSubtitleTextView(savedTextSize, savedColor).apply {
             typeface = Typeface.create(Typeface.SANS_SERIF, Typeface.BOLD)
             maxLines = 4
             ellipsize = android.text.TextUtils.TruncateAt.END
         }
-        pron3layerView = createSubtitleTextView(16f, Color.parseColor("#FFD54F")).apply {
+        pron3layerView = createSubtitleTextView((savedTextSize - 2f).coerceAtLeast(12f), Color.parseColor("#FFD54F")).apply {
             maxLines = 2
             ellipsize = android.text.TextUtils.TruncateAt.END
         }
@@ -126,13 +138,12 @@ class OverlayViewManager(private val context: Context) {
 
         buildSettingsContent(settingsContainer)
 
-        root.alpha = 0.90f
+        root.alpha = prefs.getInt("overlay_alpha", 90) / 100f
         root.addView(dashboard)
         root.addView(alphaSliderContainer)
         root.addView(subtitleContainer)
-        root.addView(settingsContainer)
+        root.addView(settingsScrollContainer)
 
-        // [VOCAB-HIGHLIGHT-LISTENER] 단어장 변경 시 오버레이 실시간 갱신
         GlobalSubtitleRelay.onVocabUpdated = {
             lastData?.let { data ->
                 origin1layerView.post {
@@ -160,13 +171,13 @@ class OverlayViewManager(private val context: Context) {
             while (startIndex >= 0) {
                 val endIndex = startIndex + word.length
                 spannable.setSpan(
-                    BackgroundColorSpan(Color.parseColor("#FFE57F")), // 형광 하이라이트 (노랑)
+                    BackgroundColorSpan(Color.parseColor("#FFE57F")),
                     startIndex,
                     endIndex,
                     Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
                 )
                 spannable.setSpan(
-                    ForegroundColorSpan(Color.parseColor("#1B1B1B")), // 가독성 블랙
+                    ForegroundColorSpan(Color.parseColor("#1B1B1B")),
                     startIndex,
                     endIndex,
                     Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
@@ -288,6 +299,7 @@ class OverlayViewManager(private val context: Context) {
             val newState = !GlobalSubtitleRelay.isPron3LayerEnabled
             GlobalSubtitleRelay.isPron3LayerEnabled = newState
             pron3layerView.visibility = if (newState) View.VISIBLE else View.GONE
+            pronToggleView?.setChecked(newState)
             Log.i(TAG, "[SYNC] Pronunciation Enabled: $newState")
         }
 
@@ -300,15 +312,7 @@ class OverlayViewManager(private val context: Context) {
         }
 
         val btnSettings = createMiniButton("⚙", Color.WHITE) {
-            val isSettingsVisible = settingsContainer.visibility == View.VISIBLE
-            if (isSettingsVisible) {
-                settingsContainer.visibility = View.GONE
-                subtitleContainer.visibility = View.VISIBLE
-            } else {
-                settingsContainer.visibility = View.VISIBLE
-                subtitleContainer.visibility = View.GONE
-            }
-            containerView?.requestLayout()
+            toggleSettingsView()
         }
 
         val btnClose = createMiniButton("✕", Color.parseColor("#FF5252")) {
@@ -328,7 +332,21 @@ class OverlayViewManager(private val context: Context) {
         return dashboard
     }
 
+    private fun toggleSettingsView() {
+        val isSettingsVisible = settingsScrollContainer.visibility == View.VISIBLE
+        if (isSettingsVisible) {
+            settingsScrollContainer.visibility = View.GONE
+            subtitleContainer.visibility = View.VISIBLE
+        } else {
+            pronToggleView?.setChecked(GlobalSubtitleRelay.isPron3LayerEnabled)
+            settingsScrollContainer.visibility = View.VISIBLE
+            subtitleContainer.visibility = View.GONE
+        }
+        containerView?.requestLayout()
+    }
+
     private fun buildAlphaSliderPanel(): LinearLayout {
+        val prefs = context.getSharedPreferences("viitor_overlay_prefs", Context.MODE_PRIVATE)
         val sliderContainer = LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
             visibility = View.GONE
@@ -345,12 +363,14 @@ class OverlayViewManager(private val context: Context) {
 
         val seekBar = SeekBar(context).apply {
             max = 100
-            progress = 90
+            progress = prefs.getInt("overlay_alpha", 90)
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
             setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
                 override fun onProgressChanged(sb: SeekBar, progress: Int, fromUser: Boolean) {
                     if (fromUser) {
-                        containerView?.alpha = progress / 100f
+                        val safeAlpha = (progress / 100f).coerceIn(0.2f, 1.0f)
+                        containerView?.alpha = safeAlpha
+                        prefs.edit().putInt("overlay_alpha", progress).apply()
                         Log.d(TAG, "[OVERLAY] Alpha set to ${progress}%")
                     }
                 }
@@ -370,18 +390,18 @@ class OverlayViewManager(private val context: Context) {
         val initialMode = GlobalSubtitleRelay.TranslationMode.fromCode(savedModeCode)
         GlobalSubtitleRelay.translationMode = initialMode
 
-        // --- 1. Translation Mode Selector (일본어 -> 한국어 / 영어 -> 한국어) ---
+        // --- 1. Translation Mode Selector ---
         val langLabel = TextView(context).apply {
-            text = "번역 모드 설정 (Translation Mode)"
+            text = "🌐 번역 방향 모드 (Translation Mode)"
             setTextColor(Color.WHITE)
             textSize = 13f
-            typeface = android.graphics.Typeface.DEFAULT_BOLD
-            setPadding(0, 0, 0, 10)
+            typeface = Typeface.DEFAULT_BOLD
+            setPadding(0, 0, 0, 8)
         }
 
         val modeLayout = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(0, 0, 0, 16)
+            setPadding(0, 0, 0, 12)
         }
 
         lateinit var btnJaKo: Button
@@ -406,10 +426,9 @@ class OverlayViewManager(private val context: Context) {
             prefs.edit().putString("translation_mode_code", "JA_KO").apply()
             updateModeButtons(GlobalSubtitleRelay.TranslationMode.JA_TO_KO)
             GlobalSubtitleRelay.requestRepair()
-            Log.i(TAG, "[MODE] Set Translation Mode to JA -> KO")
         }.apply {
             gravity = Gravity.START or Gravity.CENTER_VERTICAL
-            setPadding(25, 12, 25, 12)
+            setPadding(20, 10, 20, 10)
         }
 
         btnEnKo = createMiniButton("🇺🇸 영어 ➔ 🇰🇷 한국어 (EN ➔ KO)", Color.WHITE) {
@@ -417,70 +436,118 @@ class OverlayViewManager(private val context: Context) {
             prefs.edit().putString("translation_mode_code", "EN_KO").apply()
             updateModeButtons(GlobalSubtitleRelay.TranslationMode.EN_TO_KO)
             GlobalSubtitleRelay.requestRepair()
-            Log.i(TAG, "[MODE] Set Translation Mode to EN -> KO")
         }.apply {
             gravity = Gravity.START or Gravity.CENTER_VERTICAL
-            setPadding(25, 12, 25, 12)
+            setPadding(20, 10, 20, 10)
         }
 
         updateModeButtons(initialMode)
         modeLayout.addView(btnJaKo)
         modeLayout.addView(btnEnKo)
 
-        // --- 2. Pronunciation Switch ---
-        val switchPron = android.widget.Switch(context).apply {
-            text = "한국식 발음 표시"
-            setTextColor(Color.WHITE)
-            isChecked = GlobalSubtitleRelay.isPron3LayerEnabled
-            setOnCheckedChangeListener { _, isChecked ->
-                pron3layerView.visibility = if (isChecked) View.VISIBLE else View.GONE
+        // --- 2. Pronunciation Switch (SettingToggleItemView 재사용) ---
+        pronToggleView = SettingToggleItemView(context).apply {
+            setLabel("🗣 한국식 발음 표시")
+            setChecked(GlobalSubtitleRelay.isPron3LayerEnabled)
+            setOnToggleListener { isChecked ->
                 GlobalSubtitleRelay.isPron3LayerEnabled = isChecked
+                pron3layerView.visibility = if (isChecked) View.VISIBLE else View.GONE
             }
         }
 
-        // --- 3. Subtitle Color Options ---
+        // --- 3. Subtitle Font Size ---
+        val sizeLabel = TextView(context).apply {
+            text = "🔤 자막 글자 크기 (Font Size)"
+            setTextColor(Color.WHITE)
+            textSize = 13f
+            typeface = Typeface.DEFAULT_BOLD
+            setPadding(0, 10, 0, 8)
+        }
+
+        val sizeLayout = LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            setPadding(0, 0, 0, 12)
+        }
+
+        fun updateFontSize(sz: Float) {
+            origin1layerView.textSize = sz
+            tras2layerView.textSize = sz
+            pron3layerView.textSize = (sz - 2f).coerceAtLeast(12f)
+            prefs.edit().putFloat("subtitle_text_size", sz).apply()
+        }
+
+        val btnSizeSmall = createMiniButton("작게 (14sp)", Color.WHITE) { updateFontSize(14f) }
+        val btnSizeNormal = createMiniButton("보통 (18sp)", Color.WHITE) { updateFontSize(18f) }
+        val btnSizeLarge = createMiniButton("크게 (22sp)", Color.WHITE) { updateFontSize(22f) }
+        sizeLayout.addView(btnSizeSmall)
+        sizeLayout.addView(btnSizeNormal)
+        sizeLayout.addView(btnSizeLarge)
+
+        // --- 4. Subtitle Color Palette ---
+        val colorLabel = TextView(context).apply {
+            text = "🎨 번역 자막 색상 (Color)"
+            setTextColor(Color.WHITE)
+            textSize = 13f
+            typeface = Typeface.DEFAULT_BOLD
+            setPadding(0, 10, 0, 8)
+        }
+
         val colorLayout = LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
-            setPadding(0, 10, 0, 10)
+            setPadding(0, 0, 0, 12)
         }
-        val btnColorPnk = createMiniButton("COLOR-PINK", Color.parseColor("#FF4081")) {
-            val color = Color.parseColor("#FF4081")
+
+        fun applyColor(color: Int) {
             tras2layerView.setTextColor(color)
             GlobalSubtitleRelay.currentTras2LayerColor = color
+            prefs.edit().putInt("subtitle_color", color).apply()
         }
-        val btnColorWht = createMiniButton("COLOR-WHITE", Color.WHITE) {
-            val color = Color.WHITE
-            tras2layerView.setTextColor(color)
-            GlobalSubtitleRelay.currentTras2LayerColor = color
-        }
-        val btnColorPnk2 = createMiniButton("ff4081", Color.parseColor("#FF4081")) {
-            val color = Color.parseColor("#FF4081")
-            tras2layerView.setTextColor(color)
-            GlobalSubtitleRelay.currentTras2LayerColor = color
-        }
+
+        val btnColorPnk = createMiniButton("🌸 핑크", Color.parseColor("#FF4081")) { applyColor(Color.parseColor("#FF4081")) }
+        val btnColorWht = createMiniButton("⚪ 화이트", Color.WHITE) { applyColor(Color.WHITE) }
+        val btnColorYel = createMiniButton("🟡 옐로우", Color.parseColor("#FFD54F")) { applyColor(Color.parseColor("#FFD54F")) }
+        val btnColorBlu = createMiniButton("🔵 하늘", Color.parseColor("#64B5F6")) { applyColor(Color.parseColor("#64B5F6")) }
+
         colorLayout.addView(btnColorPnk)
         colorLayout.addView(btnColorWht)
-        colorLayout.addView(btnColorPnk2)
+        colorLayout.addView(btnColorYel)
+        colorLayout.addView(btnColorBlu)
+
+        // --- 5. Done / Return Button ---
+        val btnDone = Button(context).apply {
+            text = "✓ 설정 완료 및 자막 보기"
+            setTextColor(Color.WHITE)
+            setBackgroundColor(Color.parseColor("#FF4081"))
+            setOnClickListener { toggleSettingsView() }
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply { topMargin = 12 }
+        }
 
         parent.addView(langLabel)
         parent.addView(modeLayout)
-        parent.addView(switchPron)
+        parent.addView(pronToggleView)
+        parent.addView(sizeLabel)
+        parent.addView(sizeLayout)
+        parent.addView(colorLabel)
         parent.addView(colorLayout)
+        parent.addView(btnDone)
     }
 
     private fun createMiniButton(txt: String, color: Int, onClick: () -> Unit): Button {
         return Button(context).apply {
             text = txt
             setTextColor(color)
-            textSize = 14f
+            textSize = 13f
             minWidth = 0
             minHeight = 0
-            setBackgroundColor(Color.TRANSPARENT)
-            setPadding(15, 5, 15, 5)
+            setBackgroundColor(Color.parseColor("#33FFFFFF"))
+            setPadding(16, 8, 16, 8)
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.WRAP_CONTENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT
-            ).apply { marginStart = 15 }
+            ).apply { marginEnd = 8 }
             setOnClickListener { onClick() }
         }
     }

@@ -14,6 +14,7 @@ import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.viitor.MainActivity
 import com.viitor.ui.SharedSyncViewModel
+import com.viitor.ui.common.SettingToggleItemView
 import com.viitor.util.ResourceBroker
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.collectLatest
@@ -27,6 +28,7 @@ class ScriptFragment : Fragment() {
     private lateinit var pbLoading: ProgressBar
     private lateinit var tvEmptyInfo: View
     private lateinit var adapter: ScriptAdapter
+    private var toggleAutoScroll: SettingToggleItemView? = null
 
     private var scriptFetchJob: Job? = null
     
@@ -43,6 +45,7 @@ class ScriptFragment : Fragment() {
         rvScript = view.findViewById(ResourceBroker.idScriptList)
         pbLoading = view.findViewById(ResourceBroker.idScriptLoading)
         tvEmptyInfo = view.findViewById(ResourceBroker.idScriptEmpty)
+        toggleAutoScroll = view.findViewById(ResourceBroker.idScriptAutoScrollToggle)
 
         adapter = ScriptAdapter(
             onLineClicked = { anchorTimeMs ->
@@ -61,6 +64,17 @@ class ScriptFragment : Fragment() {
 
         rvScript.layoutManager = LinearLayoutManager(requireContext())
         rvScript.adapter = adapter
+
+        // [AUTO-SCROLL-TOGGLE] SettingToggleItemView 재사용 컴포넌트 연결
+        toggleAutoScroll?.apply {
+            setLabel("대본 자동 스크롤 추적")
+            setChecked(adapter.isAutoScrollEnabled)
+            setOnToggleListener { isChecked ->
+                adapter.isAutoScrollEnabled = isChecked
+                val msg = if (isChecked) "대본 자동 스크롤이 켜졌습니다." else "대본 자동 스크롤이 꺼졌습니다. (자유 탐색)"
+                Toast.makeText(requireContext(), msg, Toast.LENGTH_SHORT).show()
+            }
+        }
 
         // [COLOR-SYNC] 1탭 오버레이에서 변경된 색상을 실시간으로 대본에 반영
         com.viitor.pipeline.core.GlobalSubtitleRelay.onColorChanged = { _ ->
@@ -100,7 +114,9 @@ class ScriptFragment : Fragment() {
                 if (liveList.isNotEmpty()) {
                     tvEmptyInfo.visibility = View.GONE
                     adapter.submitList(liveList)
-                    rvScript.scrollToPosition(liveList.size - 1)
+                    if (adapter.isAutoScrollEnabled) {
+                        rvScript.scrollToPosition(liveList.size - 1)
+                    }
                 }
             }
         }

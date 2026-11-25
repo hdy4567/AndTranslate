@@ -9,6 +9,7 @@ import android.view.ViewGroup
 import android.widget.TextView
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.lifecycleScope
+import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.viitor.R
 import com.viitor.data.local.VocabularyEntity
@@ -27,6 +28,8 @@ class ScriptAdapter(
 ) : RecyclerView.Adapter<ScriptAdapter.ScriptViewHolder>() {
 
     var currentVideoId: String? = null
+    var isAutoScrollEnabled: Boolean = true // [USER-CONTROL] 자동 스크롤 추적 On/Off 플래그
+
     private var items = listOf<SubtitleData>()
     private val translationAgent = GoogleTranslationAgent()
     private val inFlightTranslations = mutableSetOf<String>()
@@ -50,7 +53,7 @@ class ScriptAdapter(
         notifyDataSetChanged()
     }
 
-    fun updateSyncTime(timeMs: Long, layoutManager: androidx.recyclerview.widget.LinearLayoutManager? = null) {
+    fun updateSyncTime(timeMs: Long, layoutManager: LinearLayoutManager? = null) {
         if (items.isEmpty()) return
 
         var newIndex = -1
@@ -74,7 +77,10 @@ class ScriptAdapter(
             if (oldIndex != -1) notifyItemChanged(oldIndex)
             notifyItemChanged(currentActiveIndex)
 
-            layoutManager?.scrollToPositionWithOffset(currentActiveIndex, 200)
+            // [AUTO-SCROLL-GUARD] 사용자가 자동 스크롤을 켰을 때만 화면 이동
+            if (isAutoScrollEnabled) {
+                layoutManager?.scrollToPositionWithOffset(currentActiveIndex, 200)
+            }
         }
     }
 
@@ -110,8 +116,9 @@ class ScriptAdapter(
             
             tokens.forEach { token ->
                 val trimmedToken = token.trim()
+                // [VOCAB-GUARD] 1글자 조사 오탐 방지: 2글자 이상 매칭 또는 완전 일치
                 val isSavedVocab = savedVocabWords.contains(trimmedToken) || 
-                        savedVocabWords.any { it.isNotBlank() && trimmedToken.contains(it, ignoreCase = true) }
+                        (trimmedToken.length >= 2 && savedVocabWords.any { it.length >= 2 && trimmedToken.contains(it, ignoreCase = true) })
 
                 val chip = TextView(itemView.context).apply {
                     text = token
@@ -119,7 +126,7 @@ class ScriptAdapter(
                     setPadding(12, 6, 12, 6)
                     
                     if (isSavedVocab) {
-                        // [VOCAB-HIGHLIGHT] 내가 저장한 단어는 형광 하이라이트 (노랑 배경 + 블랙 텍스트 볼드)
+                        // [VOCAB-HIGHLIGHT] 내가 저장한 단어는 형광 하이라이트
                         setBackgroundColor(Color.parseColor("#FFE57F"))
                         setTextColor(Color.parseColor("#1B1B1B"))
                         typeface = Typeface.DEFAULT_BOLD
@@ -129,7 +136,6 @@ class ScriptAdapter(
                         typeface = Typeface.DEFAULT
                     }
                     
-                    // [INTERACTION-GATEWAY] 단어 클릭 시 프리미엄 팝업 노출 (저장 당시 문맥 포함)
                     setOnClickListener { 
                         showWordActionDialog(token, line.origin1layer, line.tras2layer, line.anchorTimeMs)
                     }
@@ -139,7 +145,6 @@ class ScriptAdapter(
             
             tvTime.text = formatTime(line.anchorTimeMs)
             
-            // [OPTIMIZATION] 이미 번역/발음 정보가 있다면 즉시 표시
             if (line.tras2layer != null) {
                 tvKo.text = line.tras2layer
                 tvKo.setTextColor(GlobalSubtitleRelay.currentTras2LayerColor)
@@ -174,7 +179,6 @@ class ScriptAdapter(
                 }
             }
 
-            // 3번째 줄: 발음 표시 (한국식 발음)
             val pronText = line.pron3layer.orEmpty()
             if (pronText.isNotBlank()) {
                 tvPron.visibility = View.VISIBLE
@@ -204,14 +208,13 @@ class ScriptAdapter(
             }
         }
 
-        /** [PREMIUM-ACTION] 단어별 사전/저장/문맥 복원 팝업 UI */
         private fun showWordActionDialog(token: String, origin1layer: String, tras2layer: String?, anchorTimeMs: Long) {
             val ctx = itemView.context
             val builder = androidx.appcompat.app.AlertDialog.Builder(ctx, com.google.android.material.R.style.Theme_Material3_Dark_Dialog_Alert)
             
             val trimmed = token.trim()
             val matchedEntity = savedVocabList.find { 
-                it.word.equals(trimmed, ignoreCase = true) || trimmed.contains(it.word, ignoreCase = true) 
+                it.word.equals(trimmed, ignoreCase = true) || (it.word.length >= 2 && trimmed.contains(it.word, ignoreCase = true))
             }
 
             if (matchedEntity != null) {
